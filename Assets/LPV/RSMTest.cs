@@ -68,10 +68,17 @@ public class RSMTest : MonoBehaviour
             return false;
         }
 
-        _shadowCam.orthographicSize = 0.5f * gridResolution * gridPixelSize;
-        _shadowCam.nearClipPlane = -0.5f * gridResolution * gridPixelSize;
-        _shadowCam.farClipPlane = 0.5f * gridResolution * gridPixelSize;
-        Shader.SetGlobalMatrix("_LPV_WorldToLightLocalMatrix", _shadowCam.transform.worldToLocalMatrix);
+        float half_size = 0.5f * gridResolution * gridPixelSize;
+        _shadowCam.orthographicSize = half_size;
+        _shadowCam.nearClipPlane = -half_size;
+        _shadowCam.farClipPlane = half_size;
+
+        var mat = Matrix4x4.Scale(Vector3.one / (2f*half_size)) *
+                  Matrix4x4.Translate(Vector3.one * half_size) *
+                  _shadowCam.transform.worldToLocalMatrix;
+
+        Shader.SetGlobalMatrix("_LPV_WorldToLightLocalMatrix", mat);
+
         _shadowCam.RenderWithShader(depthShader, "RenderType");
 
         target = _target;

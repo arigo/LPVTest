@@ -54,6 +54,7 @@ public class LPVTest : MonoBehaviour
 
         RenderTexture tg = new RenderTexture(desc);
         tg.wrapMode = TextureWrapMode.Clamp;
+        tg.filterMode = FilterMode.Bilinear;
         tg.Create();
         return tg;
     }
@@ -101,6 +102,8 @@ public class LPVTest : MonoBehaviour
             lpvShader.SetTexture(propagate_step_kernel, "LPV_r", _lpvTex3D_r);
             lpvShader.Dispatch(propagate_step_kernel, thread_groups, thread_groups, thread_groups);
         }
+
+        Shader.SetGlobalTexture("_LPV_r_accum", _lpvTex3D_r_accum);
     }
 
 
@@ -153,7 +156,7 @@ public class LPVTest : MonoBehaviour
                             shNormal.y *= dir.y;
                             shNormal.z *= dir.z;
                             shNormal.w *= dir.x;
-                            float len = Vector4.Dot(shNormal, entry);
+                            float len = Vector4.Dot(entry, shNormal);
                             Gizmos.color = len >= 0 ? new Color(0.5f, 0, 0) : new Color(0, 0.5f, 0.5f);
                             Vector3 dir1 = pix_x * dir.x + pix_y * dir.y + pix_z * dir.z;
                             Gizmos.DrawLine(center, center + len * dir1);
