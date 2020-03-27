@@ -22,10 +22,12 @@ float4 dirToCosineLobe(float3 dir)
 /**********************************************************************************/
 
 
-RWTexture3D<float4> LPV_r;
-Texture3D<float4> LPV_r_prev;
-RWTexture3D<float4> LPV_r_accum;
+RWTexture3D<float4> LPV_r, LPV_g, LPV_b;
+RWTexture3D<float4> LPV_r_accum, LPV_g_accum, LPV_b_accum;
+Texture3D<float4> LPV_r_prev, LPV_g_prev, LPV_b_prev;
+
 Texture2D<float4> ShadowTexture;
+Texture2D<float4> ShadowTextureColor;
 uint GridResolution;
 //float InverseGridResolution;
 
@@ -36,7 +38,11 @@ RWStructuredBuffer<float4> ExtractTexture;
 void ClearKernel(uint3 id : SV_DispatchThreadID)
 {
     LPV_r[id.xyz] = float4(0, 0, 0, 0);
+    LPV_g[id.xyz] = float4(0, 0, 0, 0);
+    LPV_b[id.xyz] = float4(0, 0, 0, 0);
     LPV_r_accum[id.xyz] = float4(0, 0, 0, 0);
+    LPV_g_accum[id.xyz] = float4(0, 0, 0, 0);
+    LPV_b_accum[id.xyz] = float4(0, 0, 0, 0);
 }
 
 [numthreads(8, 8, 1)]
@@ -48,23 +54,30 @@ void InjectKernel(uint3 id : SV_DispatchThreadID)
     if (depth > 0.75)
         return;   /* ignore, no sample here */
 
+    float3 color = (float3)ShadowTextureColor[xy];
+
     float3 normal = normalize(normal_depth.xyz);
     float light = -normal.z;
     if (light <= 0)
         return;   /* ignore, reversed normal */
+    color *= light;
 
     depth += 0.5;
     uint idepth = (uint)(depth * GridResolution);
 
     float4 shNormal = dirToCosineLobe(normal);
 
-    LPV_r[uint3(xy, idepth)] = shNormal * light;
-    LPV_r_accum[uint3(xy, idepth)] = shNormal * light;
+    LPV_r[uint3(xy, idepth)] = shNormal * color.r;
+    LPV_g[uint3(xy, idepth)] = shNormal * color.g;
+    LPV_b[uint3(xy, idepth)] = shNormal * color.b;
+    LPV_r_accum[uint3(xy, idepth)] = shNormal * color.r;
+    LPV_g_accum[uint3(xy, idepth)] = shNormal * color.g;
+    LPV_b_accum[uint3(xy, idepth)] = shNormal * color.b;
 }
 
 struct ShRGB
 {
-    float4 sh_r;
+    float4 sh_r, sh_g, sh_b;
 };
 
 
@@ -79,12 +92,16 @@ void GatherSideFaceContribution(inout ShRGB cell, ShRGB neighbor, float3 delta, 
     float4 sh_eval_direction = dirToSH(eval_direction);
 
     cell.sh_r += sideFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_r, sh_eval_direction)) * sh_faceDirectionCosineLobe;
+    cell.sh_g += sideFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_g, sh_eval_direction)) * sh_faceDirectionCosineLobe;
+    cell.sh_b += sideFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_b, sh_eval_direction)) * sh_faceDirectionCosineLobe;
 }
 
 void GatherNeighborContribution(inout ShRGB cell, uint3 id, int3 idelta)
 {
     ShRGB neighbor;
     neighbor.sh_r = LPV_r_prev[id - idelta];
+    neighbor.sh_g = LPV_g_prev[id - idelta];
+    neighbor.sh_b = LPV_b_prev[id - idelta];
     float3 delta = idelta;
     
     GatherSideFaceContribution(cell, neighbor, delta, delta.yzx);
@@ -96,6 +113,8 @@ void GatherNeighborContribution(inout ShRGB cell, uint3 id, int3 idelta)
     float4 sh_curCosLobe = dirToCosineLobe(delta);
     float4 sh_delta = dirToSH(delta);
     cell.sh_r += directFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_r, sh_delta)) * sh_curCosLobe;
+    cell.sh_g += directFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_g, sh_delta)) * sh_curCosLobe;
+    cell.sh_b += directFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_b, sh_delta)) * sh_curCosLobe;
 }
 
 [numthreads(4, 4, 4)]
@@ -103,6 +122,8 @@ void PropagateStepKernel(uint3 id : SV_DispatchThreadID)
 {
     ShRGB cell;
     cell.sh_r = float4(0, 0, 0, 0);
+    cell.sh_g = float4(0, 0, 0, 0);
+    cell.sh_b = float4(0, 0, 0, 0);
     GatherNeighborContribution(cell, id, int3(1, 0, 0));
     GatherNeighborContribution(cell, id, int3(0, 1, 0));
     GatherNeighborContribution(cell, id, int3(0, 0, 1));
@@ -110,7 +131,11 @@ void PropagateStepKernel(uint3 id : SV_DispatchThreadID)
     GatherNeighborContribution(cell, id, int3(0, -1, 0));
     GatherNeighborContribution(cell, id, int3(0, 0, -1));
     LPV_r[id] = cell.sh_r;
+    LPV_g[id] = cell.sh_g;
+    LPV_b[id] = cell.sh_b;
     LPV_r_accum[id] += cell.sh_r;
+    LPV_g_accum[id] += cell.sh_g;
+    LPV_b_accum[id] += cell.sh_b;
 }
 
 [numthreads(4, 4, 4)]

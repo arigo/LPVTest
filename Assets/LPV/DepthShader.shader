@@ -25,7 +25,14 @@
                 float3 world_normal : TEXCOORD0;
             };
 
+            struct f2a
+            {
+                float4 geometry : COLOR0;
+                float4 color : COLOR1;
+            };
+
             float4x4 _LPV_WorldToLightLocalMatrix;
+            float4 _Color;
 
             v2f vert(appdata v)
             {
@@ -35,7 +42,7 @@
                 return o;
             }
 
-            float4 frag(v2f i) : SV_Target
+            f2a frag(v2f i)
             {
                 float depth = i.vertex.z;
 #ifdef UNITY_REVERSED_Z
@@ -43,7 +50,10 @@
 #else
                 depth = depth - 0.5;
 #endif
-                return float4(mul((float3x3)_LPV_WorldToLightLocalMatrix, i.world_normal), depth);
+                f2a OUT;
+                OUT.geometry = float4(mul((float3x3)_LPV_WorldToLightLocalMatrix, i.world_normal), depth);
+                OUT.color = _Color;
+                return OUT;
             }
             ENDCG
         }

@@ -13,16 +13,17 @@ public class RSMTest : MonoBehaviour
     public Shader depthShader;
 
 
-    RenderTexture _target;
+    public RenderTexture _target, _target2;
     Camera _shadowCam;
 
     void DestroyTargets()
     {
         if (_target)
-        {
             DestroyImmediate(_target);
-            _target = null;
-        }
+        _target = null;
+        if (_target2)
+            DestroyImmediate(_target2);
+        _target2 = null;
     }
 
     RenderTexture CreateTarget()
@@ -30,6 +31,15 @@ public class RSMTest : MonoBehaviour
         /* depth, and four components as described in FetchShadowCamera() */
         RenderTexture tg = new RenderTexture(gridResolution, gridResolution, 24,
                                              RenderTextureFormat.ARGBHalf);
+        tg.wrapMode = TextureWrapMode.Clamp;
+        tg.Create();
+        return tg;
+    }
+
+    RenderTexture CreateTarget2()
+    {
+        RenderTexture tg = new RenderTexture(gridResolution, gridResolution, 0,
+                                             RenderTextureFormat.ARGB32);
         tg.wrapMode = TextureWrapMode.Clamp;
         tg.Create();
         return tg;
@@ -44,6 +54,7 @@ public class RSMTest : MonoBehaviour
         {
             if (gridResolution <= 0)
                 return false;
+            _target2 = CreateTarget2();
             _target = CreateTarget();
         }
         return true;
@@ -55,16 +66,18 @@ public class RSMTest : MonoBehaviour
             return false;
 
         SetUpShadowCam();
-        _shadowCam.targetTexture = _target;
+        _shadowCam.SetTargetBuffers(new RenderBuffer[] { _target.colorBuffer, _target2.colorBuffer },
+                                    _target.depthBuffer);
 
         return true;
     }
 
-    public bool UpdateShadowsFull(out RenderTexture target)
+    public bool UpdateShadowsFull(out RenderTexture target, out RenderTexture target_color)
     {
         if (!InitializeUpdateSteps())
         {
             target = null;
+            target_color = null;
             return false;
         }
 
@@ -82,6 +95,7 @@ public class RSMTest : MonoBehaviour
         _shadowCam.RenderWithShader(depthShader, "RenderType");
 
         target = _target;
+        target_color = _target2;
         return true;
     }
 

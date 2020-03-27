@@ -10,15 +10,15 @@ public class LPVTest : MonoBehaviour
     public float lpvGridCellSize;
     public ComputeShader lpvShader;
 
-    public RenderTexture _lpvTex3D_r, _lpvTex3D_r_prev, _lpvTex3D_r_accum;
     public int propagateSteps;
     public bool drawGizmos;
 
 
-    private void Start()
+    struct ShRGB
     {
-        DestroyTargets();
+        internal RenderTexture r, g, b;
     }
+    ShRGB _lpvTex3D, _lpvTex3D_prev, _lpvTex3D_accum;
 
 
     static void Swap<T>(ref T a, ref T b)
@@ -35,11 +35,18 @@ public class LPVTest : MonoBehaviour
         tex = null;
     }
 
+    void DestroyTarget(ref ShRGB sh)
+    {
+        DestroyTarget(ref sh.r);
+        DestroyTarget(ref sh.g);
+        DestroyTarget(ref sh.b);
+    }
+
     void DestroyTargets()
     {
-        DestroyTarget(ref _lpvTex3D_r);
-        DestroyTarget(ref _lpvTex3D_r_prev);
-        DestroyTarget(ref _lpvTex3D_r_accum);
+        DestroyTarget(ref _lpvTex3D);
+        DestroyTarget(ref _lpvTex3D_prev);
+        DestroyTarget(ref _lpvTex3D_accum);
     }
 
     RenderTexture CreateTarget()
@@ -59,64 +66,85 @@ public class LPVTest : MonoBehaviour
         return tg;
     }
 
+    ShRGB CreateShRGB()
+    {
+        return new ShRGB
+        {
+            r = CreateTarget(),
+            g = CreateTarget(),
+            b = CreateTarget(),
+        };
+    }
+
+    void SetShRGBTextures(int kernel, string suffix, ShRGB sh)
+    {
+        lpvShader.SetTexture(kernel, "LPV_r" + suffix, sh.r);
+        lpvShader.SetTexture(kernel, "LPV_g" + suffix, sh.g);
+        lpvShader.SetTexture(kernel, "LPV_b" + suffix, sh.b);
+    }
+
     private void Update()
     {
-        if (!GetComponent<RSMTest>().UpdateShadowsFull(out RenderTexture shadow_texture))
+        if (!GetComponent<RSMTest>().UpdateShadowsFull(out RenderTexture shadow_texture,
+                                                       out RenderTexture shadow_texture_color))
             return;
 
-        if (_lpvTex3D_r != null && _lpvTex3D_r.width != lpvGridResolution)
+        if (_lpvTex3D.r != null && _lpvTex3D.r.width != lpvGridResolution)
             DestroyTargets();
 
-        if (_lpvTex3D_r == null)
+        if (_lpvTex3D.r == null)
         {
             if (lpvGridResolution == 0)
                 return;
-            _lpvTex3D_r_prev = CreateTarget();
-            _lpvTex3D_r_accum = CreateTarget();
-            _lpvTex3D_r = CreateTarget();
+            _lpvTex3D_prev = CreateShRGB();
+            _lpvTex3D_accum = CreateShRGB();
+            _lpvTex3D = CreateShRGB();
         }
 
         lpvShader.SetInt("GridResolution", lpvGridResolution);
         lpvShader.SetFloat("InverseGridResolution", 1f / lpvGridResolution);
 
         int clear_kernel = lpvShader.FindKernel("ClearKernel");
-        lpvShader.SetTexture(clear_kernel, "LPV_r", _lpvTex3D_r);
-        lpvShader.SetTexture(clear_kernel, "LPV_r_accum", _lpvTex3D_r_accum);
+        SetShRGBTextures(clear_kernel, "", _lpvTex3D);
+        SetShRGBTextures(clear_kernel, "_accum", _lpvTex3D_accum);
         int thread_groups = (lpvGridResolution + 3) / 4;
         lpvShader.Dispatch(clear_kernel, thread_groups, thread_groups, thread_groups);
 
         int inject_kernel = lpvShader.FindKernel("InjectKernel");
-        lpvShader.SetTexture(inject_kernel, "LPV_r", _lpvTex3D_r);
-        lpvShader.SetTexture(inject_kernel, "LPV_r_accum", _lpvTex3D_r_accum);
+        SetShRGBTextures(inject_kernel, "", _lpvTex3D);
+        SetShRGBTextures(inject_kernel, "_accum", _lpvTex3D_accum);
         lpvShader.SetTexture(inject_kernel, "ShadowTexture", shadow_texture);
+        lpvShader.SetTexture(inject_kernel, "ShadowTextureColor", shadow_texture_color);
         thread_groups = (lpvGridResolution + 7) / 8;
         lpvShader.Dispatch(inject_kernel, thread_groups, thread_groups, 1);
 
         int propagate_step_kernel = lpvShader.FindKernel("PropagateStepKernel");
-        lpvShader.SetTexture(propagate_step_kernel, "LPV_r_accum", _lpvTex3D_r_accum);
+        SetShRGBTextures(propagate_step_kernel, "_accum", _lpvTex3D_accum);
         thread_groups = (lpvGridResolution + 3) / 4;
         for (int i = 0; i < propagateSteps; i++)
         {
-            Swap(ref _lpvTex3D_r_prev, ref _lpvTex3D_r);
-            lpvShader.SetTexture(propagate_step_kernel, "LPV_r_prev", _lpvTex3D_r_prev);
-            lpvShader.SetTexture(propagate_step_kernel, "LPV_r", _lpvTex3D_r);
+            Swap(ref _lpvTex3D_prev, ref _lpvTex3D);
+            SetShRGBTextures(propagate_step_kernel, "_prev", _lpvTex3D_prev);
+            SetShRGBTextures(propagate_step_kernel, "", _lpvTex3D);
             lpvShader.Dispatch(propagate_step_kernel, thread_groups, thread_groups, thread_groups);
         }
 
-        Shader.SetGlobalTexture("_LPV_r_accum", _lpvTex3D_r_accum);
+        Shader.SetGlobalTexture("_LPV_r_accum", _lpvTex3D_accum.r);
+        Shader.SetGlobalTexture("_LPV_g_accum", _lpvTex3D_accum.g);
+        Shader.SetGlobalTexture("_LPV_b_accum", _lpvTex3D_accum.b);
     }
 
 
 #if UNITY_EDITOR
     void OnDrawGizmos()
     {
-        if (!drawGizmos || _lpvTex3D_r == null)
+        if (!drawGizmos || _lpvTex3D.r == null)
             return;
 
         int extract_kernel = lpvShader.FindKernel("ExtractKernel");
         var buffer = new ComputeBuffer(lpvGridResolution * lpvGridResolution * lpvGridResolution, 4 * 4, ComputeBufferType.Default);
         lpvShader.SetBuffer(extract_kernel, "ExtractTexture", buffer);
-        lpvShader.SetTexture(extract_kernel, "LPV_r", _lpvTex3D_r_accum);
+        lpvShader.SetTexture(extract_kernel, "LPV_r", _lpvTex3D_accum.r);
         int thread_groups = (lpvGridResolution + 3) / 4;
         lpvShader.Dispatch(extract_kernel, thread_groups, thread_groups, thread_groups);
 
