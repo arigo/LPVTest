@@ -70,9 +70,9 @@ void InjectKernel(uint3 id : SV_DispatchThreadID)
     LPV_r[uint3(xy, idepth)] = shNormal * color.r;
     LPV_g[uint3(xy, idepth)] = shNormal * color.g;
     LPV_b[uint3(xy, idepth)] = shNormal * color.b;
-    LPV_r_accum[uint3(xy, idepth)] = shNormal * color.r;
-    LPV_g_accum[uint3(xy, idepth)] = shNormal * color.g;
-    LPV_b_accum[uint3(xy, idepth)] = shNormal * color.b;
+    //LPV_r_accum[uint3(xy, idepth)] = shNormal * color.r;
+    //LPV_g_accum[uint3(xy, idepth)] = shNormal * color.g;
+    //LPV_b_accum[uint3(xy, idepth)] = shNormal * color.b;
 }
 
 struct ShRGB
