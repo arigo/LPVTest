@@ -51,6 +51,7 @@
 
         sampler3D _LPV_r_accum, _LPV_g_accum, _LPV_b_accum;
         float4x4 _LPV_WorldToLightLocalMatrix;
+        float _LPV_GridCellSize;
 
 
 
@@ -66,7 +67,7 @@
 
 
             float3 sample_pos = IN.worldPos;
-            sample_pos += o.Normal * 0.3;
+            sample_pos += o.Normal * _LPV_GridCellSize;
             float3 lpv_pos = mul(_LPV_WorldToLightLocalMatrix, float4(sample_pos, 1));
             float4 sh_cell_r = tex3D(_LPV_r_accum, lpv_pos);
             float4 sh_cell_g = tex3D(_LPV_g_accum, lpv_pos);
@@ -76,8 +77,9 @@
             float s_r = dot(sh_cell_r, sh_normal);
             float s_g = dot(sh_cell_g, sh_normal);
             float s_b = dot(sh_cell_b, sh_normal);
-            o.Emission = max(float3(0, 0, 0), float3(s_r, s_g, s_b)) * 0.5;
+            o.Emission = max(float3(0, 0, 0), float3(s_r, s_g, s_b)) * 0.8;
             //o.Emission = lpv_pos;
+            o.Occlusion = 0.8;
         }
         ENDCG
     }
