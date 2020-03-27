@@ -1,0 +1,122 @@
+﻿#pragma kernel ClearKernel
+#pragma kernel InjectKernel
+#pragma kernel PropagateStepKernel
+#pragma kernel ExtractKernel
+
+
+#define SH_C0 0.282094792   // 1 / 2sqrt(pi)
+#define SH_C1 0.488602512   // sqrt(3/pi) / 2
+#define SH_cosLobe_C0 0.886226925  // sqrt(pi)/2
+#define SH_cosLobe_C1 1.02332671   // sqrt(pi/3)
+
+float4 dirToSH(float3 dir)
+{
+    return float4(SH_C0, -SH_C1 * dir.y, SH_C1 * dir.z, -SH_C1 * dir.x);
+}
+
+float4 dirToCosineLobe(float3 dir)
+{
+    return float4(SH_cosLobe_C0, -SH_cosLobe_C1 * dir.y, SH_cosLobe_C1 * dir.z, -SH_cosLobe_C1 * dir.x);
+}
+
+/**********************************************************************************/
+
+
+RWTexture3D<float4> LPV_r;
+Texture3D<float4> LPV_r_prev;
+RWTexture3D<float4> LPV_r_accum;
+Texture2D<float4> ShadowTexture;
+uint GridResolution;
+//float InverseGridResolution;
+
+RWStructuredBuffer<float4> ExtractTexture;
+
+
+[numthreads(4, 4, 4)]
+void ClearKernel(uint3 id : SV_DispatchThreadID)
+{
+    LPV_r[id.xyz] = float4(0, 0, 0, 0);
+    LPV_r_accum[id.xyz] = float4(0, 0, 0, 0);
+}
+
+[numthreads(8, 8, 1)]
+void InjectKernel(uint3 id : SV_DispatchThreadID)
+{
+    uint2 xy = id.xy;
+    float4 normal_depth = ShadowTexture[xy];
+    float depth = normal_depth.a;   /* between -0.5 (near) and 0.5 (far from light source) */
+    if (depth > 0.75)
+        return;   /* ignore, no sample here */
+
+    float3 normal = normalize(normal_depth.xyz);
+    float light = -normal.z;
+    if (light <= 0)
+        return;   /* ignore, reversed normal */
+
+    depth += 0.5;
+    uint idepth = (uint)(depth * GridResolution);
+
+    float4 shNormal = dirToCosineLobe(normal);
+
+    LPV_r[uint3(xy, idepth)] = shNormal * light;
+    LPV_r_accum[uint3(xy, idepth)] = shNormal * light;
+}
+
+struct ShRGB
+{
+    float4 sh_r;
+};
+
+
+#define SIDE_smallComponent   0.4472135 // 1 / sqrt(5)
+#define SIDE_bigComponent     0.894427  // 2 / sqrt(5)
+
+void GatherSideFaceContribution(inout ShRGB cell, ShRGB neighbor, float3 delta, float3 face_direction)
+{
+    const float sideFaceSubtendedSolidAngle = 0.12732;
+    float4 sh_faceDirectionCosineLobe = dirToCosineLobe(face_direction);
+    float3 eval_direction = SIDE_bigComponent * delta + SIDE_smallComponent * face_direction;
+    float4 sh_eval_direction = dirToSH(eval_direction);
+
+    cell.sh_r += sideFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_r, sh_eval_direction)) * sh_faceDirectionCosineLobe;
+}
+
+void GatherNeighborContribution(inout ShRGB cell, uint3 id, int3 idelta)
+{
+    ShRGB neighbor;
+    neighbor.sh_r = LPV_r_prev[id - idelta];
+    float3 delta = idelta;
+    
+    GatherSideFaceContribution(cell, neighbor, delta, delta.yzx);
+    GatherSideFaceContribution(cell, neighbor, delta, -delta.yzx);
+    GatherSideFaceContribution(cell, neighbor, delta, delta.zxy);
+    GatherSideFaceContribution(cell, neighbor, delta, -delta.zxy);
+
+    const float directFaceSubtendedSolidAngle = 0.13477;
+    float4 sh_curCosLobe = dirToCosineLobe(delta);
+    float4 sh_delta = dirToSH(delta);
+    cell.sh_r += directFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_r, sh_delta)) * sh_curCosLobe;
+}
+
+[numthreads(4, 4, 4)]
+void PropagateStepKernel(uint3 id : SV_DispatchThreadID)
+{
+    ShRGB cell;
+    cell.sh_r = float4(0, 0, 0, 0);
+    GatherNeighborContribution(cell, id, int3(1, 0, 0));
+    GatherNeighborContribution(cell, id, int3(0, 1, 0));
+    GatherNeighborContribution(cell, id, int3(0, 0, 1));
+    GatherNeighborContribution(cell, id, int3(-1, 0, 0));
+    GatherNeighborContribution(cell, id, int3(0, -1, 0));
+    GatherNeighborContribution(cell, id, int3(0, 0, -1));
+    LPV_r[id] = cell.sh_r;
+    LPV_r_accum[id] += cell.sh_r;
+}
+
+[numthreads(4, 4, 4)]
+void ExtractKernel(uint3 id : SV_DispatchThreadID)
+{
+    uint3 pos = id.xyz;
+    uint index = (id.z * GridResolution + id.y) * GridResolution + id.x;
+    ExtractTexture[index] = LPV_r[pos];
+}
