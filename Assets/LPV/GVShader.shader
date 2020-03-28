@@ -63,18 +63,15 @@
 
                 int3 pos = int3(xyz);
 
-                int index = pos.x + _LPV_GridResolution * (pos.y + _LPV_GridResolution * pos.z);
-                _LPV_gv[index * 4] = 1023;
-
-                /*float3 normal = i.world_normal;
+                float3 normal = i.world_normal;
                 normal = normalize(mul((float3x3)_LPV_WorldToLightLocalMatrix, normal));
+                int4 shNormalScaled = int4(dirToCosineLobe(normal) * SH_F2I * (normal.z * normal.z));
 
-                int4 shNormalScaled = int4(dirToCosineLobe(normal) * SH_F2I * 0.1);
                 int index = pos.x + _LPV_GridResolution * (pos.y + _LPV_GridResolution * pos.z);
                 index *= 4; InterlockedAdd(_LPV_gv[index], shNormalScaled.x);
                 index += 1; InterlockedAdd(_LPV_gv[index], shNormalScaled.y);
                 index += 1; InterlockedAdd(_LPV_gv[index], shNormalScaled.z);
-                index += 1; InterlockedAdd(_LPV_gv[index], shNormalScaled.w);*/
+                index += 1; InterlockedAdd(_LPV_gv[index], shNormalScaled.w);
 
                 /* dummy result, ignored */
                 return fixed4(0, 0, 0, 0);

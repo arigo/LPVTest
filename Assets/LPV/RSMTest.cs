@@ -153,8 +153,8 @@ public class RSMTest : MonoBehaviour
             _shadowCam.backgroundColor = new Color(0, 0, 0, 1);
             _shadowCam.clearFlags = CameraClearFlags.SolidColor;
             _shadowCam.aspect = 1;
-            _shadowCam.cullingMask = cullingMask;
         }
+        _shadowCam.cullingMask = cullingMask;
         return _shadowCam;
     }
 }
