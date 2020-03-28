@@ -24,7 +24,7 @@
             #include "UnityCG.cginc"
             #pragma vertex vert
             #pragma fragment frag
-            //#pragma multi_compile   _ ORIENTATION_YZ ORIENTATION_ZX
+            #pragma multi_compile   _ ORIENTATION_2 ORIENTATION_3
 
             #include "SHCommon.cginc"
 
@@ -59,13 +59,22 @@
 #if defined(UNITY_REVERSED_Z)
                 xyz.z = 1 - xyz.z;
 #endif
-                xyz.z *= _LPV_GridResolution;
+                xyz.z *= _LPV_GridResolution * 0.99999;   /* makes sure 0 <= pos.z < GridResolution */
 
                 int3 pos = int3(xyz);
 
                 float3 normal = i.world_normal;
                 normal = normalize(mul((float3x3)_LPV_WorldToLightLocalMatrix, normal));
-                int4 shNormalScaled = int4(dirToCosineLobe(normal) * SH_F2I * (normal.z * normal.z));
+                float reduce = normal.z;
+#ifdef ORIENTATION_2
+                pos = pos.yzx;
+                reduce = normal.y;
+#endif
+#ifdef ORIENTATION_3
+                pos = pos.zxy;
+                reduce = normal.x;
+#endif
+                int4 shNormalScaled = int4(dirToCosineLobe(normal) * SH_F2I * (reduce * reduce));
 
                 int index = pos.x + _LPV_GridResolution * (pos.y + _LPV_GridResolution * pos.z);
                 index *= 4; InterlockedAdd(_LPV_gv[index], shNormalScaled.x);

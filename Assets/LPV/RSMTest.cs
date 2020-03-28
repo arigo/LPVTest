@@ -116,6 +116,23 @@ public class RSMTest : MonoBehaviour
         Graphics.SetRandomWriteTarget(1, _cb_gv);
         cam.RenderWithShader(gvShader, "RenderType");
 
+        var orig_rotation = cam.transform.rotation;
+        var axis_y = cam.transform.up;
+        var axis_z = cam.transform.forward;
+        cam.transform.Rotate(axis_y, -90, Space.World);
+        cam.transform.Rotate(axis_z, -90, Space.World);
+        Shader.EnableKeyword("ORIENTATION_2");
+        cam.RenderWithShader(gvShader, "RenderType");
+        Shader.DisableKeyword("ORIENTATION_2");
+        cam.transform.rotation = orig_rotation;
+
+        cam.transform.Rotate(axis_z, 90, Space.World);
+        cam.transform.Rotate(axis_y, 90, Space.World);
+        Shader.EnableKeyword("ORIENTATION_3");
+        cam.RenderWithShader(gvShader, "RenderType");
+        Shader.DisableKeyword("ORIENTATION_3");
+        cam.transform.rotation = orig_rotation;
+
         cb_gv = _cb_gv;
 
         /* Second step: render into the RSM (reflective shadow map).  This is a regular
