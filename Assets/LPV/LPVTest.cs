@@ -87,7 +87,8 @@ public class LPVTest : MonoBehaviour
     private void Update()
     {
         if (!GetComponent<RSMTest>().UpdateShadowsFull(out RenderTexture shadow_texture,
-                                                       out RenderTexture shadow_texture_color))
+                                                       out RenderTexture shadow_texture_color,
+                                                       out Matrix4x4 world_to_light_local_matrix))
             return;
 
         if (_lpvTex3D.r != null && _lpvTex3D.r.width != lpvGridResolution)
@@ -103,6 +104,7 @@ public class LPVTest : MonoBehaviour
         }
 
         lpvShader.SetInt("GridResolution", lpvGridResolution);
+        lpvShader.SetMatrix("WorldToLightLocalMatrix", world_to_light_local_matrix);
 
         int clear_kernel = lpvShader.FindKernel("ClearKernel");
         SetShRGBTextures(clear_kernel, "", _lpvTex3D);
@@ -139,10 +141,16 @@ public class LPVTest : MonoBehaviour
             lpvShader.Dispatch(propagate_step_kernel, thread_groups, thread_groups, thread_groups);
         }
 
+        int clear_border_kernel = lpvShader.FindKernel("ClearBorderKernel");
+        SetShRGBTextures(clear_border_kernel, "_accum", _lpvTex3D_accum);
+        thread_groups = (lpvGridResolution + 7) / 8;
+        lpvShader.Dispatch(clear_border_kernel, thread_groups, thread_groups, thread_groups);
+
         Shader.SetGlobalTexture("_LPV_r_accum", _lpvTex3D_accum.r);
         Shader.SetGlobalTexture("_LPV_g_accum", _lpvTex3D_accum.g);
         Shader.SetGlobalTexture("_LPV_b_accum", _lpvTex3D_accum.b);
         Shader.SetGlobalFloat("_LPV_GridCellSize", lpvGridCellSize);
+        Shader.SetGlobalMatrix("_LPV_WorldToLightLocalMatrix", world_to_light_local_matrix);
     }
 
     void GetInitialBorderColor(out Vector4 sh_r, out Vector4 sh_g, out Vector4 sh_b)

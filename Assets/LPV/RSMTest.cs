@@ -72,25 +72,26 @@ public class RSMTest : MonoBehaviour
         return true;
     }
 
-    public bool UpdateShadowsFull(out RenderTexture target, out RenderTexture target_color)
+    public bool UpdateShadowsFull(out RenderTexture target, out RenderTexture target_color,
+                                  out Matrix4x4 world_to_light_local_matrix)
     {
         if (!InitializeUpdateSteps())
         {
             target = null;
             target_color = null;
+            world_to_light_local_matrix = Matrix4x4.identity;
             return false;
         }
 
         float half_size = 0.5f * gridResolution * gridPixelSize;
         _shadowCam.orthographicSize = half_size;
-        _shadowCam.nearClipPlane = -half_size;
+        _shadowCam.nearClipPlane = -127 * half_size;
         _shadowCam.farClipPlane = half_size;
 
         var mat = Matrix4x4.Scale(Vector3.one / (2f*half_size)) *
                   Matrix4x4.Translate(Vector3.one * half_size) *
                   _shadowCam.transform.worldToLocalMatrix;
-
-        Shader.SetGlobalMatrix("_LPV_WorldToLightLocalMatrix", mat);
+        world_to_light_local_matrix = mat;
 
         _shadowCam.RenderWithShader(depthShader, "RenderType");
 

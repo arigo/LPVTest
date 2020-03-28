@@ -1,5 +1,6 @@
 ﻿#pragma kernel ClearKernel
 #pragma kernel BorderKernel
+#pragma kernel ClearBorderKernel
 #pragma kernel InjectKernel
 #pragma kernel PropagateStepKernel
 #pragma kernel ExtractKernel
@@ -30,6 +31,7 @@ Texture3D<float4> LPV_r_prev, LPV_g_prev, LPV_b_prev;
 Texture2D<float4> ShadowTexture;
 Texture2D<float4> ShadowTextureColor;
 uint GridResolution;
+float4x4 WorldToLightLocalMatrix;
 
 RWStructuredBuffer<float4> ExtractTexture;
 
@@ -57,6 +59,20 @@ void InitializeColorFromBorder(uint3 id)
     //LPV_b_accum[id] = LPV_sh_b;
 }
 
+void ClearColorFromBorder(uint3 id)
+{
+    LPV_r_accum[id] = float4(0, 0, 0, 0);
+    LPV_g_accum[id] = float4(0, 0, 0, 0);
+    LPV_b_accum[id] = float4(0, 0, 0, 0);
+}
+
+void DampColorFromBorder(uint3 id)
+{
+    LPV_r_accum[id] *= 0.65;
+    LPV_g_accum[id] *= 0.65;
+    LPV_b_accum[id] *= 0.65;
+}
+
 [numthreads(8, 8, 1)]
 void BorderKernel(uint3 id : SV_DispatchThreadID)
 {
@@ -69,17 +85,39 @@ void BorderKernel(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(8, 8, 1)]
+void ClearBorderKernel(uint3 id : SV_DispatchThreadID)
+{
+    ClearColorFromBorder(uint3(id.x, id.y, 0));
+    ClearColorFromBorder(uint3(id.x, id.y, GridResolution - 1));
+    ClearColorFromBorder(uint3(id.x, 0, id.y));
+    ClearColorFromBorder(uint3(id.x, GridResolution - 1, id.y));
+    ClearColorFromBorder(uint3(0, id.x, id.y));
+    ClearColorFromBorder(uint3(GridResolution - 1, id.x, id.y));
+
+    AllMemoryBarrierWithGroupSync();
+    DampColorFromBorder(uint3(id.x, id.y, 1));
+    DampColorFromBorder(uint3(id.x, id.y, GridResolution - 2));
+    AllMemoryBarrierWithGroupSync();
+    DampColorFromBorder(uint3(id.x, 1, id.y));
+    DampColorFromBorder(uint3(id.x, GridResolution - 2, id.y));
+    AllMemoryBarrierWithGroupSync();
+    DampColorFromBorder(uint3(1, id.x, id.y));
+    DampColorFromBorder(uint3(GridResolution - 2, id.x, id.y));
+}
+
+[numthreads(8, 8, 1)]
 void InjectKernel(uint3 id : SV_DispatchThreadID)
 {
     uint2 xy = id.xy;
     float4 normal_depth = ShadowTexture[xy];
     float depth = normal_depth.a;   /* between -0.5 (near) and 0.5 (far from light source) */
-    if (depth > 0.75)
+    if (abs(depth) > 0.5)
         return;   /* ignore, no sample here */
 
     float3 color = (float3)ShadowTextureColor[xy];
 
-    float3 normal = normalize(normal_depth.xyz);
+    float3 normal = normal_depth.xyz;
+    normal = normalize(mul((float3x3)WorldToLightLocalMatrix, normal));
     float light = -normal.z;
     if (light <= 0)
         return;   /* ignore, reversed normal */
