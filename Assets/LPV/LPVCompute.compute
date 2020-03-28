@@ -3,23 +3,9 @@
 #pragma kernel ClearBorderKernel
 #pragma kernel InjectKernel
 #pragma kernel PropagateStepKernel
-#pragma kernel ExtractKernel
+#pragma kernel DebugKernel
 
-
-#define SH_C0 0.282094792   // 1 / 2sqrt(pi)
-#define SH_C1 0.488602512   // sqrt(3/pi) / 2
-#define SH_cosLobe_C0 0.886226925  // sqrt(pi)/2
-#define SH_cosLobe_C1 1.02332671   // sqrt(pi/3)
-
-float4 dirToSH(float3 dir)
-{
-    return float4(SH_C0, -SH_C1 * dir.y, SH_C1 * dir.z, -SH_C1 * dir.x);
-}
-
-float4 dirToCosineLobe(float3 dir)
-{
-    return float4(SH_cosLobe_C0, -SH_cosLobe_C1 * dir.y, SH_cosLobe_C1 * dir.z, -SH_cosLobe_C1 * dir.x);
-}
+#include "SHCommon.cginc"
 
 /**********************************************************************************/
 
@@ -34,6 +20,7 @@ uint GridResolution;
 float4x4 WorldToLightLocalMatrix;
 
 RWStructuredBuffer<float4> ExtractTexture;
+Texture3D<float4> ExtractSource;
 
 float4 LPV_sh_r, LPV_sh_g, LPV_sh_b;
 
@@ -200,9 +187,9 @@ void PropagateStepKernel(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(4, 4, 4)]
-void ExtractKernel(uint3 id : SV_DispatchThreadID)
+void DebugKernel(uint3 id : SV_DispatchThreadID)
 {
     uint3 pos = id.xyz;
     uint index = (id.z * GridResolution + id.y) * GridResolution + id.x;
-    ExtractTexture[index] = LPV_r[pos];
+    ExtractTexture[index] = ExtractSource[pos];
 }

@@ -1,0 +1,37 @@
+﻿#pragma kernel ClearKernel
+#pragma kernel DebugKernel
+
+#include "SHCommon.cginc"
+
+/**********************************************************************************/
+
+
+RWStructuredBuffer<int> LPV_gv;
+int GridResolution;
+
+RWStructuredBuffer<float4> ExtractTexture;
+
+
+[numthreads(64, 1, 1)]
+void ClearKernel(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    index *= 4; LPV_gv[index] = 0;
+    index += 1; LPV_gv[index] = 0;
+    index += 1; LPV_gv[index] = 0;
+    index += 1; LPV_gv[index] = 0;
+}
+
+[numthreads(4, 4, 4)]
+void DebugKernel(uint3 id : SV_DispatchThreadID)
+{
+    uint index = (id.z * GridResolution + id.y) * GridResolution + id.x;
+    uint src_index = index;
+    int4 sh_int;
+    src_index *= 4; sh_int.x = LPV_gv[src_index];
+    src_index += 1; sh_int.y = LPV_gv[src_index];
+    src_index += 1; sh_int.z = LPV_gv[src_index];
+    src_index += 1; sh_int.w = LPV_gv[src_index];
+
+    ExtractTexture[index] = float4(sh_int) * SH_I2F;
+}

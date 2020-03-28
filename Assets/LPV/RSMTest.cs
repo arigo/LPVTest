@@ -10,11 +10,23 @@ public class RSMTest : MonoBehaviour
     public int gridResolution;     /* TODO: allow a larger value than in LPVTest */
     public float gridPixelSize;
     public LayerMask cullingMask = -1;
-    public Shader depthShader;
+    public Shader depthShader, gvShader;
+    public ComputeShader gvCompute;
 
 
     public RenderTexture _target, _target2;
+    internal ComputeBuffer _cb_gv;
     Camera _shadowCam;
+
+    private void Start()
+    {
+        DestroyTargets();
+    }
+
+    private void OnDestroy()
+    {
+        DestroyTargets();
+    }
 
     void DestroyTargets()
     {
@@ -24,6 +36,9 @@ public class RSMTest : MonoBehaviour
         if (_target2)
             DestroyImmediate(_target2);
         _target2 = null;
+        if (_cb_gv != null)
+            _cb_gv.Release();
+        _cb_gv = null;
     }
 
     RenderTexture CreateTarget()
@@ -45,58 +60,76 @@ public class RSMTest : MonoBehaviour
         return tg;
     }
 
-    bool UpdateRenderTexture()
+    void UpdateRenderTexture()
     {
         if (_target != null && _target.width != gridResolution)
             DestroyTargets();
 
-        if (_target == null)
+        if (_target == null || _cb_gv == null)
         {
-            if (gridResolution <= 0)
-                return false;
+            _cb_gv = new ComputeBuffer(4 * gridResolution * gridResolution * gridResolution, 4);
             _target2 = CreateTarget2();
             _target = CreateTarget();
         }
-        return true;
-    }
-
-    bool InitializeUpdateSteps()
-    {
-        if (!UpdateRenderTexture())
-            return false;
-
-        SetUpShadowCam();
-        _shadowCam.SetTargetBuffers(new RenderBuffer[] { _target.colorBuffer, _target2.colorBuffer },
-                                    _target.depthBuffer);
-
-        return true;
     }
 
     public bool UpdateShadowsFull(out RenderTexture target, out RenderTexture target_color,
-                                  out Matrix4x4 world_to_light_local_matrix)
+                                  out Matrix4x4 world_to_light_local_matrix,
+                                  out ComputeBuffer cb_gv)
     {
-        if (!InitializeUpdateSteps())
+        if (gridResolution <= 0)
         {
             target = null;
             target_color = null;
             world_to_light_local_matrix = Matrix4x4.identity;
+            cb_gv = null;
             return false;
         }
+        UpdateRenderTexture();
+
+        var cam = FetchShadowCamera();
+        var trackTransform = directionalLight.transform;
+        cam.transform.SetPositionAndRotation(trackTransform.position, trackTransform.rotation);
 
         float half_size = 0.5f * gridResolution * gridPixelSize;
-        _shadowCam.orthographicSize = half_size;
-        _shadowCam.nearClipPlane = -127 * half_size;
-        _shadowCam.farClipPlane = half_size;
-
-        var mat = Matrix4x4.Scale(Vector3.one / (2f*half_size)) *
+        var mat = Matrix4x4.Scale(Vector3.one / (2f * half_size)) *
                   Matrix4x4.Translate(Vector3.one * half_size) *
-                  _shadowCam.transform.worldToLocalMatrix;
+                  cam.transform.worldToLocalMatrix;
         world_to_light_local_matrix = mat;
 
-        _shadowCam.RenderWithShader(depthShader, "RenderType");
+        /* First step: render into the GV (geometry volume).  Here, there is no depth map
+         * and the fragment shader writes into the 3D texture _tex3d_gv.
+         */
+        int clear_kernel = gvCompute.FindKernel("ClearKernel");
+        gvCompute.SetInt("GridResolution", gridResolution);
+        gvCompute.SetBuffer(clear_kernel, "LPV_gv", _cb_gv);
+        int thread_groups = (gridResolution * gridResolution * gridResolution + 63) / 64;
+        gvCompute.Dispatch(clear_kernel, thread_groups, 1, 1);
+
+        Shader.SetGlobalInt("_LPV_GridResolution", gridResolution);
+        Shader.SetGlobalMatrix("_LPV_WorldToLightLocalMatrix", mat);
+
+        cam.orthographicSize = half_size;
+        cam.nearClipPlane = -half_size;
+        cam.farClipPlane = half_size;
+        cam.targetTexture = _target2;
+        Graphics.SetRandomWriteTarget(1, _cb_gv);
+        cam.RenderWithShader(gvShader, "RenderType");
+
+        cb_gv = _cb_gv;
+
+        /* Second step: render into the RSM (reflective shadow map).  This is a regular
+         * vertex+fragment shader combination with a depth map, which renders into two
+         * 2D textures, _target and _target2.
+         */
+        cam.SetTargetBuffers(new RenderBuffer[] { _target.colorBuffer, _target2.colorBuffer },
+                             _target.depthBuffer);
+        cam.nearClipPlane = -127f * half_size;
+        cam.RenderWithShader(depthShader, "RenderType");
 
         target = _target;
         target_color = _target2;
+
         return true;
     }
 
@@ -120,21 +153,8 @@ public class RSMTest : MonoBehaviour
             _shadowCam.backgroundColor = new Color(0, 0, 0, 1);
             _shadowCam.clearFlags = CameraClearFlags.SolidColor;
             _shadowCam.aspect = 1;
+            _shadowCam.cullingMask = cullingMask;
         }
         return _shadowCam;
-    }
-
-
-    void SetUpShadowCam()
-    {
-        var cam = FetchShadowCamera();
-
-        var trackTransform = directionalLight.transform;
-        cam.transform.SetPositionAndRotation(trackTransform.position, trackTransform.rotation);
-
-        /* Set up the clip planes so that we store depth values in the range [-0.5, 0.5],
-         * with values near zero being near us even if depthOfShadowRange is very large.
-         * This maximizes the precision in the RHalf textures near us. */
-        cam.cullingMask = cullingMask;
     }
 }

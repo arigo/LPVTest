@@ -1,4 +1,18 @@
-﻿Shader "Hidden/ShadowVSM/Depth" {
+﻿Shader "Hidden/LPVTest/Depth" {
+    /*
+       Reflective Shadow Map shader
+       ============================
+
+       Build a shadow map.  Used as shader replacement from the "RSM shadow cam" object.
+       RSM = Reflective Shadow Map, which means that we produce not just a depth buffer
+       but also two extra sets of RGBA values:
+
+         COLOR0 (precision fp16): geometrical information:
+                                    R, G, B = fragment world normal
+                                    A = depth again (within -0.5 and 0.5 if in range, see below)
+         COLOR1 (byte precision): fragment color
+    */
+
     Properties
     {
     }
@@ -9,6 +23,7 @@
         Pass
         {
             CGPROGRAM
+            #pragma target 5.0
             #include "UnityCG.cginc"
             #pragma vertex vert
             #pragma fragment frag
@@ -31,7 +46,7 @@
                 float4 color : COLOR1;
             };
 
-            float4 _Color;
+            float4 _Color;    /* comes from the _Color property of the replaced shader */
 
             v2f vert(appdata v)
             {
