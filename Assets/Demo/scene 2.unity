@@ -943,7 +943,7 @@ Transform:
   m_GameObject: {fileID: 971320918}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 1.2, z: -2}
-  m_LocalScale: {x: 5, y: 2.4, z: 1}
+  m_LocalScale: {x: 5, y: 2.8, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 5
@@ -978,11 +978,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c8a422cc2ac83384d8bb971bd88bc1d6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  lpvGridResolution: 16
-  lpvGridCellSize: 0.5
+  lpvGridResolution: 64
+  lpvGridCellSize: 0.46
   lpvCompute: {fileID: 7200000, guid: b9c67f530ba3b5f49a6a4d3d307e470c, type: 3}
   skyColor: {r: 0.078431375, g: 0.12156863, b: 0.18039216, a: 0}
-  propagateSteps: 20
+  propagateSteps: 25
   drawGizmosR: 0
   drawGizmosG: 0
   drawGizmosB: 0
@@ -1014,8 +1014,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   directionalLight: {fileID: 199635741}
-  gridResolution: 16
-  gridPixelSize: 0.5
+  gridResolution: 64
+  gridPixelSize: 0.46
   cullingMask:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -1109,7 +1109,7 @@ Transform:
   m_GameObject: {fileID: 1234568541}
   m_LocalRotation: {x: 0, y: 1, z: 0, w: 0}
   m_LocalPosition: {x: 0, y: 1.2, z: -2}
-  m_LocalScale: {x: 5, y: 2.4, z: 1}
+  m_LocalScale: {x: 5, y: 2.8, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 4
@@ -1556,10 +1556,10 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2130583448}
-  m_LocalRotation: {x: 0, y: 0.46846953, z: 0, w: 0.88347965}
+  m_LocalRotation: {x: -0, y: 0.2874579, z: -0, w: 0.95779324}
   m_LocalPosition: {x: 2.811, y: 0.04, z: 1.65}
   m_LocalScale: {x: 3, y: 3, z: 3}
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 10
-  m_LocalEulerAnglesHint: {x: 0, y: 55.87, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 33.412003, z: 0}

@@ -9,7 +9,9 @@ public class LPVTest : MonoBehaviour
     public int lpvGridResolution;
     public float lpvGridCellSize;
     public ComputeShader lpvCompute;
+#if false
     public Color skyColor;
+#endif
 
     public int propagateSteps;
     public bool drawGizmosR, drawGizmosG, drawGizmosB, drawGizmosGV;
@@ -138,6 +140,7 @@ public class LPVTest : MonoBehaviour
         int thread_groups = (lpvGridResolution + 3) / 4;
         lpvCompute.Dispatch(clear_kernel, thread_groups, thread_groups, thread_groups);
 
+#if false
         GetInitialBorderColor(out var border_sh_r, out var border_sh_g, out var border_sh_b);
         int border_kernel = lpvCompute.FindKernel("BorderKernel");
         SetShRGBTextures(border_kernel, "", _lpvTex3D);
@@ -147,6 +150,7 @@ public class LPVTest : MonoBehaviour
         lpvCompute.SetVector("LPV_sh_b", border_sh_b);
         thread_groups = (lpvGridResolution + 7) / 8;
         lpvCompute.Dispatch(border_kernel, thread_groups, thread_groups, 1);
+#endif
 
         int inject_kernel = lpvCompute.FindKernel("InjectKernel");
         SetShRGBTextures(inject_kernel, "", _lpvTex3D);
@@ -189,6 +193,8 @@ public class LPVTest : MonoBehaviour
             _tex3d_gv.Release();
     }
 
+#if false
+    /* Disabled, because it doesn't really work if the resolution of the grid is increased */
     void GetInitialBorderColor(out Vector4 sh_r, out Vector4 sh_g, out Vector4 sh_b)
     {
         Vector3 dir = GetComponent<RSMTest>().directionalLight.transform.InverseTransformDirection(Vector3.down);
@@ -200,6 +206,7 @@ public class LPVTest : MonoBehaviour
         sh_g = cosineLobe * skyColor.g;
         sh_b = cosineLobe * skyColor.b;
     }
+#endif
 
 
 #if UNITY_EDITOR
