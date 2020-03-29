@@ -13,7 +13,7 @@
 RWTexture3D<float4> LPV_r, LPV_g, LPV_b;
 RWTexture3D<float4> LPV_r_accum, LPV_g_accum, LPV_b_accum;
 Texture3D<float4> LPV_r_prev, LPV_g_prev, LPV_b_prev;
-StructuredBuffer<int> LPV_gv;
+RWStructuredBuffer<int> LPV_gv;
 
 Texture2D<float4> ShadowTexture;
 Texture2D<float4> ShadowTextureColor;
@@ -37,23 +37,11 @@ void ClearKernel(uint3 id : SV_DispatchThreadID)
     LPV_b_accum[id] = float4(0, 0, 0, 0);
 }
 
-float4 GetGVMask(uint3 id)
-{
-    uint src_index = (id.z * GridResolution + id.y) * GridResolution + id.x;
-    int4 sh_int;
-    src_index *= 4; sh_int.x = LPV_gv[src_index];
-    src_index += 1; sh_int.y = LPV_gv[src_index];
-    src_index += 1; sh_int.z = LPV_gv[src_index];
-    src_index += 1; sh_int.w = LPV_gv[src_index];
-    return float4(sh_int) * SH_I2F;
-}
-
 void InitializeColorFromBorder(uint3 id)
 {
-    float4 sh_gvmask = GetGVMask(id);
-    LPV_r[id] = LPV_sh_r * sh_gvmask;
-    LPV_g[id] = LPV_sh_g * sh_gvmask;
-    LPV_b[id] = LPV_sh_b * sh_gvmask;
+    LPV_r[id] = LPV_sh_r;
+    LPV_g[id] = LPV_sh_g;
+    LPV_b[id] = LPV_sh_b;
     //LPV_r_accum[id] = LPV_sh_r;
     //LPV_g_accum[id] = LPV_sh_g;
     //LPV_b_accum[id] = LPV_sh_b;
@@ -136,6 +124,26 @@ void InjectKernel(uint3 id : SV_DispatchThreadID)
     //LPV_b_accum[uint3(xy, idepth)] = shNormal * color.b;
 }
 
+/*****************************************************************************/
+
+
+float4 GetGVMask(uint3 id)
+{
+    uint src_index = (id.z * GridResolution + id.y) * GridResolution + id.x;
+    int4 sh_int;
+    src_index *= 4; sh_int.x = LPV_gv[src_index];
+    src_index += 1; sh_int.y = LPV_gv[src_index];
+    src_index += 1; sh_int.z = LPV_gv[src_index];
+    src_index += 1; sh_int.w = LPV_gv[src_index];
+    return float4(sh_int) * SH_I2F;
+}
+
+float GetGVFactor(float4 sh_gvmask, float4 sh_eval_direction)
+{
+    return 1.0 - clamp(sh_gvmask.x * sh_eval_direction.x + abs(dot(sh_gvmask.yzw, sh_eval_direction.yzw)), 0.0, 1.0);
+}
+
+
 struct ShRGB
 {
     float4 sh_r, sh_g, sh_b;
@@ -144,11 +152,6 @@ struct ShRGB
 
 #define SIDE_smallComponent   0.4472135 // 1 / sqrt(5)
 #define SIDE_bigComponent     0.894427  // 2 / sqrt(5)
-
-float GetGVFactor(float4 sh_gvmask, float4 sh_eval_direction)
-{
-    return 1.0 - clamp(sh_gvmask.x * sh_eval_direction.x + abs(dot(sh_gvmask.yzw, sh_eval_direction.yzw)), 0.0, 1.0);
-}
 
 void GatherSideFaceContribution(inout ShRGB cell, inout ShRGB cell_gv, float4 sh_gvmask,
                                 ShRGB neighbor, float3 delta, float3 face_direction)
@@ -210,7 +213,7 @@ void PropagateStepKernel(uint3 id : SV_DispatchThreadID)
     cell.sh_r = cell.sh_g = cell.sh_b = float4(0, 0, 0, 0);
     cell_gv.sh_r = cell_gv.sh_g = cell_gv.sh_b = float4(0, 0, 0, 0);
 
-    float4 sh_gvmask = /*PropagationStep < 1 ? float4(0, 0, 0, 0) :*/ GetGVMask(id);
+    float4 sh_gvmask = PropagationStep < 1 ? float4(0, 0, 0, 0) : GetGVMask(id);
     GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(1, 0, 0));
     GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(0, 1, 0));
     GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(0, 0, 1));

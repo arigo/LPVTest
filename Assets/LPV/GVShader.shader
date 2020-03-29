@@ -66,6 +66,12 @@
                 float3 normal = i.world_normal;
                 normal = normalize(mul((float3x3)_LPV_WorldToLightLocalMatrix, normal));
                 float reduce = normal.z;
+
+                /* Handle the case of two-faced geometry: this produces SH that are nice cosine
+                   lobes pointing in the normal direction on one side---namely, the side facing
+                   away from the sun. */
+                normal *= sign(reduce);
+
 #ifdef ORIENTATION_2
                 pos = pos.yzx;
                 reduce = normal.y;
