@@ -118,6 +118,7 @@ public class LPVTest : MonoBehaviour
             _lpvTex3D = CreateShRGB();
             _tex3d_gv = CreateTex3dGV();
         }
+        _tex3d_gv.Create();
 
         if (!GetComponent<RSMTest>().UpdateShadowsFull(out RenderTexture shadow_texture,
                                                out RenderTexture shadow_texture_color,
@@ -183,6 +184,9 @@ public class LPVTest : MonoBehaviour
         Shader.SetGlobalTexture("_LPV_g_accum", _lpvTex3D_accum.g);
         Shader.SetGlobalTexture("_LPV_b_accum", _lpvTex3D_accum.b);
         Shader.SetGlobalFloat("_LPV_GridCellSize", lpvGridCellSize);
+
+        if (!drawGizmosGV)
+            _tex3d_gv.Release();
     }
 
     void GetInitialBorderColor(out Vector4 sh_r, out Vector4 sh_g, out Vector4 sh_b)
