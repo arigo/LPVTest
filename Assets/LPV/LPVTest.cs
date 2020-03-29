@@ -254,6 +254,7 @@ public class LPVTest : MonoBehaviour
         Gizmos.DrawLine(org, org + pix_z * lpvGridResolution);
 
         Color base_color = new Color(0.5f * cr, 0.5f * cg, 0.5f * cb);
+        float dd = mode == 0 ? 0.5f : 0;
 
         int index = 0;
         for (int z = 0; z < lpvGridResolution; z++)
@@ -263,7 +264,7 @@ public class LPVTest : MonoBehaviour
                     Vector4 entry = array[index++];
                     if (entry != Vector4.zero)
                     {
-                        Vector3 center = org + pix_x * (x + .5f) + pix_y * (y + .5f) + pix_z * (z + .5f);
+                        Vector3 center = org + pix_x * (x + dd) + pix_y * (y + dd) + pix_z * (z + dd);
                         Vector4 shBase = new Vector4(0.2821f, -0.4886f, 0.4886f, -0.4886f);
                         for (int k = 0; k < 30; k++)
                         {

@@ -108,24 +108,31 @@ public class RSMTest : MonoBehaviour
         cam.farClipPlane = half_size;
         cam.targetTexture = _target2;
         Graphics.SetRandomWriteTarget(1, cb_gv);
-        cam.RenderWithShader(gvShader, "RenderType");
 
+        var orig_position = cam.transform.position;
         var orig_rotation = cam.transform.rotation;
+        var axis_x = cam.transform.right;
         var axis_y = cam.transform.up;
         var axis_z = cam.transform.forward;
+        cam.transform.position -= 0.5f * gridPixelSize * (axis_x + axis_y);
+        cam.RenderWithShader(gvShader, "RenderType");
+        cam.transform.SetPositionAndRotation(orig_position, orig_rotation);
+
         cam.transform.Rotate(axis_y, -90, Space.World);
         cam.transform.Rotate(axis_z, -90, Space.World);
+        cam.transform.position -= 0.5f * gridPixelSize * (axis_z + axis_x);
         Shader.EnableKeyword("ORIENTATION_2");
         cam.RenderWithShader(gvShader, "RenderType");
         Shader.DisableKeyword("ORIENTATION_2");
-        cam.transform.rotation = orig_rotation;
+        cam.transform.SetPositionAndRotation(orig_position, orig_rotation);
 
         cam.transform.Rotate(axis_z, 90, Space.World);
         cam.transform.Rotate(axis_y, 90, Space.World);
+        cam.transform.position -= 0.5f * gridPixelSize * (axis_y + axis_z);
         Shader.EnableKeyword("ORIENTATION_3");
         cam.RenderWithShader(gvShader, "RenderType");
         Shader.DisableKeyword("ORIENTATION_3");
-        cam.transform.rotation = orig_rotation;
+        cam.transform.SetPositionAndRotation(orig_position, orig_rotation);
 
         int pack_kernel = gvCompute.FindKernel("PackKernel");
         gvCompute.SetBuffer(pack_kernel, "RSM_gv", cb_gv);

@@ -127,9 +127,16 @@ void InjectKernel(uint3 id : SV_DispatchThreadID)
 /*****************************************************************************/
 
 
-float4 GetGVMask(uint3 id)
+float4 GetGVMask(uint3 id, float3 delta)
 {
-    return unpackSH(LPV_gv[id]);
+    delta *= 0.5;
+    float3 pos = id - delta;
+    float4 r;
+    r =  LPV_gv[int3(pos + delta.yzx + delta.zxy)];
+    r += LPV_gv[int3(pos + delta.yzx - delta.zxy)];
+    r += LPV_gv[int3(pos - delta.yzx + delta.zxy)];
+    r += LPV_gv[int3(pos - delta.yzx - delta.zxy)];
+    return unpackSH(r * 0.25);
 }
 
 float GetGVFactor(float4 sh_gvmask, float4 sh_eval_direction)
@@ -169,14 +176,15 @@ void GatherSideFaceContribution(inout ShRGB cell, inout ShRGB cell_gv, float4 sh
     cell_gv.sh_b += sh_b * factor;
 }
 
-void GatherNeighborContribution(inout ShRGB cell, inout ShRGB cell_gv, float4 sh_gvmask, uint3 id, int3 idelta)
+void GatherNeighborContribution(inout ShRGB cell, inout ShRGB cell_gv, uint3 id, int3 idelta)
 {
     ShRGB neighbor;
     neighbor.sh_r = LPV_r_prev[id - idelta];
     neighbor.sh_g = LPV_g_prev[id - idelta];
     neighbor.sh_b = LPV_b_prev[id - idelta];
     float3 delta = idelta;
-    
+    float4 sh_gvmask = PropagationStep < 1 ? float4(0, 0, 0, 0) : GetGVMask(id, delta);
+
     GatherSideFaceContribution(cell, cell_gv, sh_gvmask, neighbor, delta, delta.yzx);
     GatherSideFaceContribution(cell, cell_gv, sh_gvmask, neighbor, delta, -delta.yzx);
     GatherSideFaceContribution(cell, cell_gv, sh_gvmask, neighbor, delta, delta.zxy);
@@ -207,13 +215,12 @@ void PropagateStepKernel(uint3 id : SV_DispatchThreadID)
     cell.sh_r = cell.sh_g = cell.sh_b = float4(0, 0, 0, 0);
     cell_gv.sh_r = cell_gv.sh_g = cell_gv.sh_b = float4(0, 0, 0, 0);
 
-    float4 sh_gvmask = PropagationStep < 1 ? float4(0, 0, 0, 0) : GetGVMask(id);
-    GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(1, 0, 0));
-    GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(0, 1, 0));
-    GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(0, 0, 1));
-    GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(-1, 0, 0));
-    GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(0, -1, 0));
-    GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(0, 0, -1));
+    GatherNeighborContribution(cell, cell_gv, id, int3(1, 0, 0));
+    GatherNeighborContribution(cell, cell_gv, id, int3(0, 1, 0));
+    GatherNeighborContribution(cell, cell_gv, id, int3(0, 0, 1));
+    GatherNeighborContribution(cell, cell_gv, id, int3(-1, 0, 0));
+    GatherNeighborContribution(cell, cell_gv, id, int3(0, -1, 0));
+    GatherNeighborContribution(cell, cell_gv, id, int3(0, 0, -1));
     LPV_r[id] = cell_gv.sh_r;
     LPV_g[id] = cell_gv.sh_g;
     LPV_b[id] = cell_gv.sh_b;
