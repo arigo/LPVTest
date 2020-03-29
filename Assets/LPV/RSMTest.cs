@@ -15,7 +15,6 @@ public class RSMTest : MonoBehaviour
 
 
     RenderTexture _target, _target2;
-    internal ComputeBuffer _cb_gv { get; private set; }
     Camera _shadowCam;
 
     private void Start()
@@ -36,9 +35,6 @@ public class RSMTest : MonoBehaviour
         if (_target2)
             DestroyImmediate(_target2);
         _target2 = null;
-        if (_cb_gv != null)
-            _cb_gv.Release();
-        _cb_gv = null;
     }
 
     RenderTexture CreateTarget()
@@ -47,7 +43,6 @@ public class RSMTest : MonoBehaviour
         RenderTexture tg = new RenderTexture(gridResolution, gridResolution, 24,
                                              RenderTextureFormat.ARGBHalf);
         tg.wrapMode = TextureWrapMode.Clamp;
-        tg.Create();
         return tg;
     }
 
@@ -56,7 +51,6 @@ public class RSMTest : MonoBehaviour
         RenderTexture tg = new RenderTexture(gridResolution, gridResolution, 0,
                                              RenderTextureFormat.ARGB32);
         tg.wrapMode = TextureWrapMode.Clamp;
-        tg.Create();
         return tg;
     }
 
@@ -65,9 +59,8 @@ public class RSMTest : MonoBehaviour
         if (_target != null && _target.width != gridResolution)
             DestroyTargets();
 
-        if (_target == null || _cb_gv == null)
+        if (_target == null)
         {
-            _cb_gv = new ComputeBuffer(4 * gridResolution * gridResolution * gridResolution, 4);
             _target2 = CreateTarget2();
             _target = CreateTarget();
         }
@@ -75,14 +68,13 @@ public class RSMTest : MonoBehaviour
 
     public bool UpdateShadowsFull(out RenderTexture target, out RenderTexture target_color,
                                   out Matrix4x4 world_to_light_local_matrix,
-                                  out ComputeBuffer cb_gv)
+                                  RenderTexture tex3d_gv)
     {
         if (gridResolution <= 0)
         {
             target = null;
             target_color = null;
             world_to_light_local_matrix = Matrix4x4.identity;
-            cb_gv = null;
             return false;
         }
         UpdateRenderTexture();
@@ -98,11 +90,13 @@ public class RSMTest : MonoBehaviour
         world_to_light_local_matrix = mat;
 
         /* First step: render into the GV (geometry volume).  Here, there is no depth map
-         * and the fragment shader writes into the 3D texture _tex3d_gv.
+         * and the fragment shader writes into the ComputeBuffer cb_gv.  At the end we
+         * copy (and pack) the information into the more compact tex3d_gv.
          */
+        var cb_gv = new ComputeBuffer(4 * gridResolution * gridResolution * gridResolution, 4);
         int clear_kernel = gvCompute.FindKernel("ClearKernel");
         gvCompute.SetInt("GridResolution", gridResolution);
-        gvCompute.SetBuffer(clear_kernel, "LPV_gv", _cb_gv);
+        gvCompute.SetBuffer(clear_kernel, "RSM_gv", cb_gv);
         int thread_groups = (gridResolution * gridResolution * gridResolution + 63) / 64;
         gvCompute.Dispatch(clear_kernel, thread_groups, 1, 1);
 
@@ -113,7 +107,7 @@ public class RSMTest : MonoBehaviour
         cam.nearClipPlane = -half_size;
         cam.farClipPlane = half_size;
         cam.targetTexture = _target2;
-        Graphics.SetRandomWriteTarget(1, _cb_gv);
+        Graphics.SetRandomWriteTarget(1, cb_gv);
         cam.RenderWithShader(gvShader, "RenderType");
 
         var orig_rotation = cam.transform.rotation;
@@ -133,7 +127,12 @@ public class RSMTest : MonoBehaviour
         Shader.DisableKeyword("ORIENTATION_3");
         cam.transform.rotation = orig_rotation;
 
-        cb_gv = _cb_gv;
+        int pack_kernel = gvCompute.FindKernel("PackKernel");
+        gvCompute.SetBuffer(pack_kernel, "RSM_gv", cb_gv);
+        gvCompute.SetTexture(pack_kernel, "LPV_gv", tex3d_gv);
+        thread_groups = (gridResolution + 3) / 4;
+        gvCompute.Dispatch(pack_kernel, thread_groups, thread_groups, thread_groups);
+        cb_gv.Release();
 
         /* Second step: render into the RSM (reflective shadow map).  This is a regular
          * vertex+fragment shader combination with a depth map, which renders into two

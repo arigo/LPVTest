@@ -13,11 +13,11 @@
 RWTexture3D<float4> LPV_r, LPV_g, LPV_b;
 RWTexture3D<float4> LPV_r_accum, LPV_g_accum, LPV_b_accum;
 Texture3D<float4> LPV_r_prev, LPV_g_prev, LPV_b_prev;
-RWStructuredBuffer<int> LPV_gv;
+RWTexture3D<float4> LPV_gv;
 
 Texture2D<float4> ShadowTexture;
 Texture2D<float4> ShadowTextureColor;
-uint GridResolution, PropagationStep;
+uint GridResolution, PropagationStep, ExtractMode;
 float4x4 WorldToLightLocalMatrix;
 
 RWStructuredBuffer<float4> ExtractTexture;
@@ -129,13 +129,7 @@ void InjectKernel(uint3 id : SV_DispatchThreadID)
 
 float4 GetGVMask(uint3 id)
 {
-    uint src_index = (id.z * GridResolution + id.y) * GridResolution + id.x;
-    int4 sh_int;
-    src_index *= 4; sh_int.x = LPV_gv[src_index];
-    src_index += 1; sh_int.y = LPV_gv[src_index];
-    src_index += 1; sh_int.z = LPV_gv[src_index];
-    src_index += 1; sh_int.w = LPV_gv[src_index];
-    return float4(sh_int) * SH_I2F;
+    return unpackSH(LPV_gv[id]);
 }
 
 float GetGVFactor(float4 sh_gvmask, float4 sh_eval_direction)
@@ -231,7 +225,9 @@ void PropagateStepKernel(uint3 id : SV_DispatchThreadID)
 [numthreads(4, 4, 4)]
 void DebugKernel(uint3 id : SV_DispatchThreadID)
 {
-    uint3 pos = id.xyz;
     uint index = (id.z * GridResolution + id.y) * GridResolution + id.x;
-    ExtractTexture[index] = ExtractSource[pos];
+    float4 sh = ExtractSource[id];
+    if (ExtractMode == 1)
+        sh = unpackSH(sh);
+    ExtractTexture[index] = sh;
 }

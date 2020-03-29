@@ -1,37 +1,34 @@
 ﻿#pragma kernel ClearKernel
-#pragma kernel DebugKernel
+#pragma kernel PackKernel
 
 #include "SHCommon.cginc"
 
 /**********************************************************************************/
 
 
-RWStructuredBuffer<int> LPV_gv;
+RWStructuredBuffer<int> RSM_gv;
+RWTexture3D<float4> LPV_gv;
 int GridResolution;
-
-RWStructuredBuffer<float4> ExtractTexture;
 
 
 [numthreads(64, 1, 1)]
 void ClearKernel(uint3 id : SV_DispatchThreadID)
 {
     uint index = id.x;
-    index *= 4; LPV_gv[index] = 0;
-    index += 1; LPV_gv[index] = 0;
-    index += 1; LPV_gv[index] = 0;
-    index += 1; LPV_gv[index] = 0;
+    index *= 4; RSM_gv[index] = 0;
+    index += 1; RSM_gv[index] = 0;
+    index += 1; RSM_gv[index] = 0;
+    index += 1; RSM_gv[index] = 0;
 }
 
 [numthreads(4, 4, 4)]
-void DebugKernel(uint3 id : SV_DispatchThreadID)
+void PackKernel(uint3 id : SV_DispatchThreadID)
 {
-    uint index = (id.z * GridResolution + id.y) * GridResolution + id.x;
-    uint src_index = index;
+    uint src_index = (id.z * GridResolution + id.y) * GridResolution + id.x;
     int4 sh_int;
-    src_index *= 4; sh_int.x = LPV_gv[src_index];
-    src_index += 1; sh_int.y = LPV_gv[src_index];
-    src_index += 1; sh_int.z = LPV_gv[src_index];
-    src_index += 1; sh_int.w = LPV_gv[src_index];
-
-    ExtractTexture[index] = float4(sh_int) * SH_I2F;
+    src_index *= 4; sh_int.x = RSM_gv[src_index];
+    src_index += 1; sh_int.y = RSM_gv[src_index];
+    src_index += 1; sh_int.z = RSM_gv[src_index];
+    src_index += 1; sh_int.w = RSM_gv[src_index];
+    LPV_gv[id] = packSH(float4(sh_int) * SH_I2F);    /* clamp values within 0 - 1 */
 }

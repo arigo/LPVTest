@@ -40,7 +40,7 @@
                 float3 world_normal : TEXCOORD0;
             };
 
-            RWStructuredBuffer<int> _LPV_gv : register(u1);
+            RWStructuredBuffer<int> _RSM_gv : register(u1);
             uint _LPV_GridResolution;
             float4x4 _LPV_WorldToLightLocalMatrix;
 
@@ -83,10 +83,10 @@
                 int4 shNormalScaled = int4(dirToCosineLobe(normal) * SH_F2I * (reduce * reduce));
 
                 int index = pos.x + _LPV_GridResolution * (pos.y + _LPV_GridResolution * pos.z);
-                index *= 4; InterlockedAdd(_LPV_gv[index], shNormalScaled.x);
-                index += 1; InterlockedAdd(_LPV_gv[index], shNormalScaled.y);
-                index += 1; InterlockedAdd(_LPV_gv[index], shNormalScaled.z);
-                index += 1; InterlockedAdd(_LPV_gv[index], shNormalScaled.w);
+                index *= 4; InterlockedAdd(_RSM_gv[index], shNormalScaled.x);
+                index += 1; InterlockedAdd(_RSM_gv[index], shNormalScaled.y);
+                index += 1; InterlockedAdd(_RSM_gv[index], shNormalScaled.z);
+                index += 1; InterlockedAdd(_RSM_gv[index], shNormalScaled.w);
 
                 /* dummy result, ignored */
                 return fixed4(0, 0, 0, 0);
