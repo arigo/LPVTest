@@ -32,12 +32,14 @@
             {
                 float4 vertex : POSITION;
                 float3 normal : NORMAL;
+                float2 texcoord : TEXCOORD0;
             };
 
             struct v2f
             {
                 float4 vertex : SV_POSITION;
                 float3 world_normal : TEXCOORD0;
+                float2 uv_MainTex : TEXCOORD1;
             };
 
             struct f2a
@@ -46,13 +48,17 @@
                 float4 color : COLOR1;
             };
 
-            float4 _Color;    /* comes from the _Color property of the replaced shader */
+            /* these come from the properties of the replaced shader */
+            float4 _Color;
+            sampler2D _MainTex;
+            float4 _MainTex_ST;
 
             v2f vert(appdata v)
             {
                 v2f o;
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.world_normal = UnityObjectToWorldNormal(v.normal);
+                o.uv_MainTex = TRANSFORM_TEX(v.texcoord, _MainTex);
                 return o;
             }
 
@@ -70,7 +76,7 @@
 #endif
                 f2a OUT;
                 OUT.geometry = float4(i.world_normal, depth);
-                OUT.color = _Color;
+                OUT.color = tex2D(_MainTex, i.uv_MainTex) * _Color;
                 return OUT;
             }
             ENDCG
