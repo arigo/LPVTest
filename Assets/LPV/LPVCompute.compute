@@ -13,10 +13,11 @@
 RWTexture3D<float4> LPV_r, LPV_g, LPV_b;
 RWTexture3D<float4> LPV_r_accum, LPV_g_accum, LPV_b_accum;
 Texture3D<float4> LPV_r_prev, LPV_g_prev, LPV_b_prev;
+StructuredBuffer<int> LPV_gv;
 
 Texture2D<float4> ShadowTexture;
 Texture2D<float4> ShadowTextureColor;
-uint GridResolution;
+uint GridResolution, PropagationStep;
 float4x4 WorldToLightLocalMatrix;
 
 RWStructuredBuffer<float4> ExtractTexture;
@@ -36,11 +37,23 @@ void ClearKernel(uint3 id : SV_DispatchThreadID)
     LPV_b_accum[id] = float4(0, 0, 0, 0);
 }
 
+float4 GetGVMask(uint3 id)
+{
+    uint src_index = (id.z * GridResolution + id.y) * GridResolution + id.x;
+    int4 sh_int;
+    src_index *= 4; sh_int.x = LPV_gv[src_index];
+    src_index += 1; sh_int.y = LPV_gv[src_index];
+    src_index += 1; sh_int.z = LPV_gv[src_index];
+    src_index += 1; sh_int.w = LPV_gv[src_index];
+    return float4(sh_int) * SH_I2F;
+}
+
 void InitializeColorFromBorder(uint3 id)
 {
-    LPV_r[id] = LPV_sh_r;
-    LPV_g[id] = LPV_sh_g;
-    LPV_b[id] = LPV_sh_b;
+    float4 sh_gvmask = GetGVMask(id);
+    LPV_r[id] = LPV_sh_r * sh_gvmask;
+    LPV_g[id] = LPV_sh_g * sh_gvmask;
+    LPV_b[id] = LPV_sh_b * sh_gvmask;
     //LPV_r_accum[id] = LPV_sh_r;
     //LPV_g_accum[id] = LPV_sh_g;
     //LPV_b_accum[id] = LPV_sh_b;
@@ -132,19 +145,34 @@ struct ShRGB
 #define SIDE_smallComponent   0.4472135 // 1 / sqrt(5)
 #define SIDE_bigComponent     0.894427  // 2 / sqrt(5)
 
-void GatherSideFaceContribution(inout ShRGB cell, ShRGB neighbor, float3 delta, float3 face_direction)
+float GetGVFactor(float4 sh_gvmask, float4 sh_eval_direction)
+{
+    return 1.0 - clamp(sh_gvmask.x * sh_eval_direction.x + abs(dot(sh_gvmask.yzw, sh_eval_direction.yzw)), 0.0, 1.0);
+}
+
+void GatherSideFaceContribution(inout ShRGB cell, inout ShRGB cell_gv, float4 sh_gvmask,
+                                ShRGB neighbor, float3 delta, float3 face_direction)
 {
     const float sideFaceSubtendedSolidAngle = 0.12732;
     float4 sh_faceDirectionCosineLobe = dirToCosineLobe(face_direction);
     float3 eval_direction = SIDE_bigComponent * delta + SIDE_smallComponent * face_direction;
     float4 sh_eval_direction = dirToSH(eval_direction);
 
-    cell.sh_r += sideFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_r, sh_eval_direction)) * sh_faceDirectionCosineLobe;
-    cell.sh_g += sideFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_g, sh_eval_direction)) * sh_faceDirectionCosineLobe;
-    cell.sh_b += sideFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_b, sh_eval_direction)) * sh_faceDirectionCosineLobe;
+    float4 sh_r = sideFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_r, sh_eval_direction)) * sh_faceDirectionCosineLobe;
+    float4 sh_g = sideFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_g, sh_eval_direction)) * sh_faceDirectionCosineLobe;
+    float4 sh_b = sideFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_b, sh_eval_direction)) * sh_faceDirectionCosineLobe;
+
+    cell.sh_r += sh_r;
+    cell.sh_g += sh_g;
+    cell.sh_b += sh_b;
+
+    float factor = GetGVFactor(sh_gvmask, sh_eval_direction);
+    cell_gv.sh_r += sh_r * factor;
+    cell_gv.sh_g += sh_g * factor;
+    cell_gv.sh_b += sh_b * factor;
 }
 
-void GatherNeighborContribution(inout ShRGB cell, uint3 id, int3 idelta)
+void GatherNeighborContribution(inout ShRGB cell, inout ShRGB cell_gv, float4 sh_gvmask, uint3 id, int3 idelta)
 {
     ShRGB neighbor;
     neighbor.sh_r = LPV_r_prev[id - idelta];
@@ -152,35 +180,46 @@ void GatherNeighborContribution(inout ShRGB cell, uint3 id, int3 idelta)
     neighbor.sh_b = LPV_b_prev[id - idelta];
     float3 delta = idelta;
     
-    GatherSideFaceContribution(cell, neighbor, delta, delta.yzx);
-    GatherSideFaceContribution(cell, neighbor, delta, -delta.yzx);
-    GatherSideFaceContribution(cell, neighbor, delta, delta.zxy);
-    GatherSideFaceContribution(cell, neighbor, delta, -delta.zxy);
+    GatherSideFaceContribution(cell, cell_gv, sh_gvmask, neighbor, delta, delta.yzx);
+    GatherSideFaceContribution(cell, cell_gv, sh_gvmask, neighbor, delta, -delta.yzx);
+    GatherSideFaceContribution(cell, cell_gv, sh_gvmask, neighbor, delta, delta.zxy);
+    GatherSideFaceContribution(cell, cell_gv, sh_gvmask, neighbor, delta, -delta.zxy);
 
     const float directFaceSubtendedSolidAngle = 0.13477;
     float4 sh_curCosLobe = dirToCosineLobe(delta);
     float4 sh_delta = dirToSH(delta);
-    cell.sh_r += directFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_r, sh_delta)) * sh_curCosLobe;
-    cell.sh_g += directFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_g, sh_delta)) * sh_curCosLobe;
-    cell.sh_b += directFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_b, sh_delta)) * sh_curCosLobe;
+
+    float4 sh_r = directFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_r, sh_delta)) * sh_curCosLobe;
+    float4 sh_g = directFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_g, sh_delta)) * sh_curCosLobe;
+    float4 sh_b = directFaceSubtendedSolidAngle * max(0, dot(neighbor.sh_b, sh_delta)) * sh_curCosLobe;
+
+    cell.sh_r += sh_r;
+    cell.sh_g += sh_g;
+    cell.sh_b += sh_b;
+
+    float factor = GetGVFactor(sh_gvmask, sh_delta);
+    cell_gv.sh_r += sh_r * factor;
+    cell_gv.sh_g += sh_g * factor;
+    cell_gv.sh_b += sh_b * factor;
 }
 
 [numthreads(4, 4, 4)]
 void PropagateStepKernel(uint3 id : SV_DispatchThreadID)
 {
-    ShRGB cell;
-    cell.sh_r = float4(0, 0, 0, 0);
-    cell.sh_g = float4(0, 0, 0, 0);
-    cell.sh_b = float4(0, 0, 0, 0);
-    GatherNeighborContribution(cell, id, int3(1, 0, 0));
-    GatherNeighborContribution(cell, id, int3(0, 1, 0));
-    GatherNeighborContribution(cell, id, int3(0, 0, 1));
-    GatherNeighborContribution(cell, id, int3(-1, 0, 0));
-    GatherNeighborContribution(cell, id, int3(0, -1, 0));
-    GatherNeighborContribution(cell, id, int3(0, 0, -1));
-    LPV_r[id] = cell.sh_r;
-    LPV_g[id] = cell.sh_g;
-    LPV_b[id] = cell.sh_b;
+    ShRGB cell, cell_gv;
+    cell.sh_r = cell.sh_g = cell.sh_b = float4(0, 0, 0, 0);
+    cell_gv.sh_r = cell_gv.sh_g = cell_gv.sh_b = float4(0, 0, 0, 0);
+
+    float4 sh_gvmask = /*PropagationStep < 1 ? float4(0, 0, 0, 0) :*/ GetGVMask(id);
+    GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(1, 0, 0));
+    GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(0, 1, 0));
+    GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(0, 0, 1));
+    GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(-1, 0, 0));
+    GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(0, -1, 0));
+    GatherNeighborContribution(cell, cell_gv, sh_gvmask, id, int3(0, 0, -1));
+    LPV_r[id] = cell_gv.sh_r;
+    LPV_g[id] = cell_gv.sh_g;
+    LPV_b[id] = cell_gv.sh_b;
     LPV_r_accum[id] += cell.sh_r;
     LPV_g_accum[id] += cell.sh_g;
     LPV_b_accum[id] += cell.sh_b;

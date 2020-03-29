@@ -117,6 +117,7 @@ public class LPVTest : MonoBehaviour
         int border_kernel = lpvCompute.FindKernel("BorderKernel");
         SetShRGBTextures(border_kernel, "", _lpvTex3D);
         //SetShRGBTextures(border_kernel, "_accum", _lpvTex3D_accum);
+        lpvCompute.SetBuffer(border_kernel, "LPV_gv", tex3d_gv);
         lpvCompute.SetVector("LPV_sh_r", border_sh_r);
         lpvCompute.SetVector("LPV_sh_g", border_sh_g);
         lpvCompute.SetVector("LPV_sh_b", border_sh_b);
@@ -133,12 +134,14 @@ public class LPVTest : MonoBehaviour
 
         int propagate_step_kernel = lpvCompute.FindKernel("PropagateStepKernel");
         SetShRGBTextures(propagate_step_kernel, "_accum", _lpvTex3D_accum);
+        lpvCompute.SetBuffer(propagate_step_kernel, "LPV_gv", tex3d_gv);
         thread_groups = (lpvGridResolution + 3) / 4;
         for (int i = 0; i < propagateSteps; i++)
         {
             Swap(ref _lpvTex3D_prev, ref _lpvTex3D);
             SetShRGBTextures(propagate_step_kernel, "_prev", _lpvTex3D_prev);
             SetShRGBTextures(propagate_step_kernel, "", _lpvTex3D);
+            lpvCompute.SetInt("PropagationStep", i);
             lpvCompute.Dispatch(propagate_step_kernel, thread_groups, thread_groups, thread_groups);
         }
 

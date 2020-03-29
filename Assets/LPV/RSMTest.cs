@@ -14,8 +14,8 @@ public class RSMTest : MonoBehaviour
     public ComputeShader gvCompute;
 
 
-    public RenderTexture _target, _target2;
-    internal ComputeBuffer _cb_gv;
+    RenderTexture _target, _target2;
+    internal ComputeBuffer _cb_gv { get; private set; }
     Camera _shadowCam;
 
     private void Start()
