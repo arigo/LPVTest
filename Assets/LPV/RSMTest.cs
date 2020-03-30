@@ -107,6 +107,7 @@ public class RSMTest : MonoBehaviour
         cam.nearClipPlane = -half_size;
         cam.farClipPlane = half_size;
         cam.targetTexture = _target2;
+        cam.clearFlags = CameraClearFlags.Nothing;
         Graphics.SetRandomWriteTarget(1, cb_gv);
 
         var orig_position = cam.transform.position;
@@ -145,6 +146,7 @@ public class RSMTest : MonoBehaviour
          * vertex+fragment shader combination with a depth map, which renders into two
          * 2D textures, _target and _target2.
          */
+        cam.clearFlags = CameraClearFlags.SolidColor;
         cam.SetTargetBuffers(new RenderBuffer[] { _target.colorBuffer, _target2.colorBuffer },
                              _target.depthBuffer);
         cam.nearClipPlane = -127f * half_size;
@@ -174,8 +176,10 @@ public class RSMTest : MonoBehaviour
              *              and larger values being farther from the light source
              */
             _shadowCam.backgroundColor = new Color(0, 0, 0, 1);
-            _shadowCam.clearFlags = CameraClearFlags.SolidColor;
             _shadowCam.aspect = 1;
+            /* Obscure: if the main camera is stereo, then this one will be confused in
+             * the SetTargetBuffers() mode unless we force it to not be stereo */
+            _shadowCam.stereoTargetEye = StereoTargetEyeMask.None;
         }
         _shadowCam.cullingMask = cullingMask;
         return _shadowCam;
