@@ -1,6 +1,6 @@
 ﻿
 sampler3D _LPV_accum;
-float4x4 _LPV_WorldToLightLocalMatrix, _LPV_WorldToLightLocalRotation;
+float4x4 _LPV_WorldToLightLocalMatrix;
 float _LPV_GridCellSize;
 
 
