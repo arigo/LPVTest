@@ -16,6 +16,7 @@
         // Physically based Standard lighting model.
         #pragma surface surf Standard
         #pragma target 5.0
+        #include "LPV.cginc"
 
         sampler2D _MainTex;
 
@@ -36,25 +37,6 @@
             // put more per-instance properties here
         UNITY_INSTANCING_BUFFER_END(Props)
 
-
-
-
-
-
-        #define SH_C0 0.282094792   // 1 / 2sqrt(pi)
-        #define SH_C1 0.488602512   // sqrt(3/pi) / 2
-
-        float4 dirToSH(float3 dir)
-        {
-            return float4(SH_C0, -SH_C1 * dir.y, SH_C1 * dir.z, -SH_C1 * dir.x);
-        }
-
-        sampler3D _LPV_r_accum, _LPV_g_accum, _LPV_b_accum;
-        float4x4 _LPV_WorldToLightLocalMatrix;
-        float _LPV_GridCellSize;
-
-
-
         void surf (Input IN, inout SurfaceOutputStandard o)
         {
             // Albedo comes from a texture tinted by color
@@ -64,22 +46,8 @@
             o.Metallic = _Metallic;
             o.Smoothness = _Glossiness;
             o.Alpha = c.a;
-
-
-            float3 sample_pos = IN.worldPos;
-            sample_pos += o.Normal * _LPV_GridCellSize;
-            float3 lpv_pos = mul(_LPV_WorldToLightLocalMatrix, float4(sample_pos, 1));
-            float4 sh_cell_r = tex3D(_LPV_r_accum, lpv_pos);
-            float4 sh_cell_g = tex3D(_LPV_g_accum, lpv_pos);
-            float4 sh_cell_b = tex3D(_LPV_b_accum, lpv_pos);
-
-            float4 sh_normal = dirToSH(o.Normal);
-            float s_r = dot(sh_cell_r, sh_normal);
-            float s_g = dot(sh_cell_g, sh_normal);
-            float s_b = dot(sh_cell_b, sh_normal);
-            o.Emission = max(float3(0, 0, 0), float3(s_r, s_g, s_b)) * 0.8;
-            //o.Emission = lpv_pos;
-            o.Occlusion = 0.8;
+            o.Emission = SampleLPVIndirectLight(IN.worldPos, o.Normal);
+            o.Occlusion = LPVOcclusion;
         }
         ENDCG
     }

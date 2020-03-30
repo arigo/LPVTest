@@ -14,7 +14,7 @@ public class LPVTest : MonoBehaviour
 #endif
 
     public int propagateSteps;
-    public bool drawGizmosR, drawGizmosG, drawGizmosB, drawGizmosGV;
+    public bool drawGizmos, drawGizmosGV;
 
 
     struct ShRGB
@@ -23,8 +23,8 @@ public class LPVTest : MonoBehaviour
         internal void Create() { r.Create(); g.Create(); b.Create(); }
         internal void Release() { r.Release(); g.Release(); b.Release(); }
     }
-    ShRGB _lpvTex3D, _lpvTex3D_prev, _lpvTex3D_accum;
-    RenderTexture _tex3d_gv;
+    ShRGB _lpvTex3D, _lpvTex3D_prev;
+    RenderTexture _tex3d_accum, _tex3d_gv;
 
 
     static void Swap<T>(ref T a, ref T b)
@@ -52,7 +52,7 @@ public class LPVTest : MonoBehaviour
     {
         DestroyTarget(ref _lpvTex3D);
         DestroyTarget(ref _lpvTex3D_prev);
-        DestroyTarget(ref _lpvTex3D_accum);
+        DestroyTarget(ref _tex3d_accum);
         DestroyTarget(ref _tex3d_gv);
     }
 
@@ -115,10 +115,10 @@ public class LPVTest : MonoBehaviour
         {
             if (lpvGridResolution == 0)
                 return;
-            _lpvTex3D_prev = CreateShRGB();
-            _lpvTex3D_accum = CreateShRGB();
-            _lpvTex3D = CreateShRGB();
+            _tex3d_accum = CreateTarget();
             _tex3d_gv = CreateTex3dGV();
+            _lpvTex3D_prev = CreateShRGB();
+            _lpvTex3D = CreateShRGB();
         }
         _tex3d_gv.Create();
 
@@ -129,14 +129,14 @@ public class LPVTest : MonoBehaviour
             return;
 
         _lpvTex3D.Create();
-        _lpvTex3D_accum.Create();
+        _tex3d_accum.Create();
 
         lpvCompute.SetInt("GridResolution", lpvGridResolution);
         lpvCompute.SetMatrix("WorldToLightLocalMatrix", world_to_light_local_matrix);
 
         int clear_kernel = lpvCompute.FindKernel("ClearKernel");
         SetShRGBTextures(clear_kernel, "", _lpvTex3D);
-        SetShRGBTextures(clear_kernel, "_accum", _lpvTex3D_accum);
+        lpvCompute.SetTexture(clear_kernel, "LPV_accum", _tex3d_accum);
         int thread_groups = (lpvGridResolution + 3) / 4;
         lpvCompute.Dispatch(clear_kernel, thread_groups, thread_groups, thread_groups);
 
@@ -154,7 +154,6 @@ public class LPVTest : MonoBehaviour
 
         int inject_kernel = lpvCompute.FindKernel("InjectKernel");
         SetShRGBTextures(inject_kernel, "", _lpvTex3D);
-        //SetShRGBTextures(inject_kernel, "_accum", _lpvTex3D_accum);
         lpvCompute.SetTexture(inject_kernel, "ShadowTexture", shadow_texture);
         lpvCompute.SetTexture(inject_kernel, "ShadowTextureColor", shadow_texture_color);
         thread_groups = (lpvGridResolution + 7) / 8;
@@ -164,7 +163,7 @@ public class LPVTest : MonoBehaviour
         shadow_texture_color.Release();
 
         int propagate_step_kernel = lpvCompute.FindKernel("PropagateStepKernel");
-        SetShRGBTextures(propagate_step_kernel, "_accum", _lpvTex3D_accum);
+        lpvCompute.SetTexture(propagate_step_kernel, "LPV_accum", _tex3d_accum);
         lpvCompute.SetTexture(propagate_step_kernel, "LPV_gv", _tex3d_gv);
         thread_groups = (lpvGridResolution + 3) / 4;
         _lpvTex3D_prev.Create();
@@ -180,13 +179,11 @@ public class LPVTest : MonoBehaviour
         _lpvTex3D.Release();
 
         int clear_border_kernel = lpvCompute.FindKernel("ClearBorderKernel");
-        SetShRGBTextures(clear_border_kernel, "_accum", _lpvTex3D_accum);
+        lpvCompute.SetTexture(clear_border_kernel, "LPV_accum", _tex3d_accum);
         thread_groups = (lpvGridResolution + 7) / 8;
         lpvCompute.Dispatch(clear_border_kernel, thread_groups, thread_groups, thread_groups);
 
-        Shader.SetGlobalTexture("_LPV_r_accum", _lpvTex3D_accum.r);
-        Shader.SetGlobalTexture("_LPV_g_accum", _lpvTex3D_accum.g);
-        Shader.SetGlobalTexture("_LPV_b_accum", _lpvTex3D_accum.b);
+        Shader.SetGlobalTexture("_LPV_accum", _tex3d_accum);
         Shader.SetGlobalFloat("_LPV_GridCellSize", lpvGridCellSize);
 
         if (!drawGizmosGV)
@@ -212,17 +209,12 @@ public class LPVTest : MonoBehaviour
 #if UNITY_EDITOR
     void OnDrawGizmos()
     {
-        if (_lpvTex3D_accum.r == null)
-            return;
-
         Vector4[] array = null;
-        if (drawGizmosR) DrawGizmos1(ref array, _lpvTex3D_accum.r, 1, 0, 0);
-        if (drawGizmosG) DrawGizmos1(ref array, _lpvTex3D_accum.g, 0, 1, 0);
-        if (drawGizmosB) DrawGizmos1(ref array, _lpvTex3D_accum.b, 0, 0, 1);
-        if (drawGizmosGV) DrawGizmos1(ref array, _tex3d_gv, 0, 0, 0, 1);
+        if (drawGizmos) DrawGizmosAccum(ref array, _tex3d_accum);
+        if (drawGizmosGV) DrawGizmosGV(ref array, _tex3d_gv);
     }
 
-    void DrawGizmos1(ref Vector4[] array, RenderTexture rt, int cr, int cg, int cb, int mode = 0)
+    void DrawGizmosExtract(ref Vector4[] array, RenderTexture rt, int mode)
     {
         int debug_kernel = lpvCompute.FindKernel("DebugKernel");
         lpvCompute.SetTexture(debug_kernel, "ExtractSource", rt);
@@ -238,6 +230,13 @@ public class LPVTest : MonoBehaviour
             array = new Vector4[lpvGridResolution * lpvGridResolution * lpvGridResolution];
         buffer.GetData(array);
         buffer.Release();
+    }
+
+    void DrawGizmosAccum(ref Vector4[] array, RenderTexture rt)
+    {
+        if (rt == null)
+            return;
+        DrawGizmosExtract(ref array, rt, 0);
 
         var rsm = GetComponent<RSMTest>();
         var tr = rsm.directionalLight.transform;
@@ -253,8 +252,45 @@ public class LPVTest : MonoBehaviour
         Gizmos.DrawLine(org, org + pix_y * lpvGridResolution);
         Gizmos.DrawLine(org, org + pix_z * lpvGridResolution);
 
-        Color base_color = new Color(0.5f * cr, 0.5f * cg, 0.5f * cb);
-        float dd = mode == 0 ? 0.5f : 0;
+        float dd = 0.5f;
+
+        int index = 0;
+        for (int z = 0; z < lpvGridResolution; z++)
+            for (int y = 0; y < lpvGridResolution; y++)
+                for (int x = 0; x < lpvGridResolution; x++)
+                {
+                    Vector4 entry = array[index++];
+                    if (entry != Vector4.zero)
+                    {
+                        Vector3 center = org + pix_x * (x + dd) + pix_y * (y + dd) + pix_z * (z + dd);
+                        Gizmos.color = new Color(entry.x * 5, entry.y * 5, entry.z * 5);
+                        Gizmos.DrawSphere(center, pixel_size * 0.125f);
+                    }
+                }
+    }
+
+    void DrawGizmosGV(ref Vector4[] array, RenderTexture rt)
+    {
+        if (rt == null)
+            return;
+        DrawGizmosExtract(ref array, rt, 1);
+
+        var rsm = GetComponent<RSMTest>();
+        var tr = rsm.directionalLight.transform;
+        float half_size = 0.5f * rsm.gridResolution * rsm.gridPixelSize;
+        float pixel_size = rsm.gridPixelSize;
+        Vector3 org = tr.position - half_size * (tr.right + tr.up + tr.forward);
+        Vector3 pix_x = tr.right * pixel_size;
+        Vector3 pix_y = tr.up * pixel_size;
+        Vector3 pix_z = tr.forward * pixel_size;
+
+        Gizmos.color = Color.white;
+        Gizmos.DrawLine(org, org + pix_x * lpvGridResolution);
+        Gizmos.DrawLine(org, org + pix_y * lpvGridResolution);
+        Gizmos.DrawLine(org, org + pix_z * lpvGridResolution);
+
+        Color base_color = Color.black;
+        float dd = 0;
 
         int index = 0;
         for (int z = 0; z < lpvGridResolution; z++)

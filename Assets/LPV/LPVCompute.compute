@@ -9,9 +9,11 @@
 
 /**********************************************************************************/
 
+#define SH_GLOBAL_FACTOR   0.3
+
 
 RWTexture3D<float4> LPV_r, LPV_g, LPV_b;
-RWTexture3D<float4> LPV_r_accum, LPV_g_accum, LPV_b_accum;
+RWTexture3D<float4> LPV_accum;
 Texture3D<float4> LPV_r_prev, LPV_g_prev, LPV_b_prev;
 RWTexture3D<float4> LPV_gv;
 
@@ -32,9 +34,7 @@ void ClearKernel(uint3 id : SV_DispatchThreadID)
     LPV_r[id] = float4(0, 0, 0, 0);
     LPV_g[id] = float4(0, 0, 0, 0);
     LPV_b[id] = float4(0, 0, 0, 0);
-    LPV_r_accum[id] = float4(0, 0, 0, 0);
-    LPV_g_accum[id] = float4(0, 0, 0, 0);
-    LPV_b_accum[id] = float4(0, 0, 0, 0);
+    LPV_accum[id] = float4(0, 0, 0, 0);
 }
 
 void InitializeColorFromBorder(uint3 id)
@@ -42,23 +42,16 @@ void InitializeColorFromBorder(uint3 id)
     LPV_r[id] = LPV_sh_r;
     LPV_g[id] = LPV_sh_g;
     LPV_b[id] = LPV_sh_b;
-    //LPV_r_accum[id] = LPV_sh_r;
-    //LPV_g_accum[id] = LPV_sh_g;
-    //LPV_b_accum[id] = LPV_sh_b;
 }
 
 void ClearColorFromBorder(uint3 id)
 {
-    LPV_r_accum[id] = float4(0, 0, 0, 0);
-    LPV_g_accum[id] = float4(0, 0, 0, 0);
-    LPV_b_accum[id] = float4(0, 0, 0, 0);
+    LPV_accum[id] = float4(0, 0, 0, 0);
 }
 
 void DampColorFromBorder(uint3 id)
 {
-    LPV_r_accum[id] *= 0.65;
-    LPV_g_accum[id] *= 0.65;
-    LPV_b_accum[id] *= 0.65;
+    LPV_accum[id] *= 0.65;
 }
 
 [numthreads(8, 8, 1)]
@@ -119,9 +112,6 @@ void InjectKernel(uint3 id : SV_DispatchThreadID)
     LPV_r[uint3(xy, idepth)] += shNormal * color.r;
     LPV_g[uint3(xy, idepth)] += shNormal * color.g;
     LPV_b[uint3(xy, idepth)] += shNormal * color.b;
-    //LPV_r_accum[uint3(xy, idepth)] = shNormal * color.r;
-    //LPV_g_accum[uint3(xy, idepth)] = shNormal * color.g;
-    //LPV_b_accum[uint3(xy, idepth)] = shNormal * color.b;
 }
 
 /*****************************************************************************/
@@ -224,9 +214,7 @@ void PropagateStepKernel(uint3 id : SV_DispatchThreadID)
     LPV_r[id] = cell_gv.sh_r;
     LPV_g[id] = cell_gv.sh_g;
     LPV_b[id] = cell_gv.sh_b;
-    LPV_r_accum[id] += cell.sh_r;
-    LPV_g_accum[id] += cell.sh_g;
-    LPV_b_accum[id] += cell.sh_b;
+    LPV_accum[id] += float4(cell.sh_r.x, cell.sh_g.x, cell.sh_b.x, 0) * SH_GLOBAL_FACTOR;
 }
 
 [numthreads(4, 4, 4)]
